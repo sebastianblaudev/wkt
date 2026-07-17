@@ -1,0 +1,1057 @@
+:root {
+    --primary-color: #50E3C2;
+    /* Mint/Cyan Green */
+    --accent-color: #50E3C2;
+    --bg-color: #000000;
+    --text-color: #ffffff;
+    --text-muted: #6e6e73;
+    --surface-color: #1c1c1e;
+    --ptt-color: #1c1c1e;
+    --ptt-active: #2c2c2e;
+    --danger-color: #ff3b30;
+
+    --font-stack: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    -webkit-tap-highlight-color: transparent;
+    user-select: none;
+}
+
+body,
+html {
+    width: 100%;
+    height: 100%;
+    background-color: var(--bg-color);
+    font-family: var(--font-stack);
+    color: var(--text-color);
+    overflow: hidden;
+    /* Prevent scrolling */
+}
+
+/* Overlay for "Tap to Start" */
+.start-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    transition: opacity 0.5s ease;
+    cursor: pointer;
+}
+
+.start-overlay .tap-icon {
+    font-family: 'Material Icons Round';
+    font-size: 64px;
+    color: var(--primary-color);
+    margin-bottom: 20px;
+    animation: pulse 2s infinite;
+}
+
+.start-overlay p {
+    font-size: 14px;
+    letter-spacing: 2px;
+    color: var(--text-muted);
+}
+
+.app-container {
+    width: 100%;
+    height: 100%;
+    max-width: 480px;
+    /* Limit width on desktop */
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    padding: 20px 24px 40px 24px;
+    position: relative;
+    background: var(--bg-color);
+}
+
+/* Status Bar */
+.status-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    /* Space for notch/safe area */
+    opacity: 0.9;
+}
+
+.status-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    background-color: var(--primary-color);
+    border-radius: 50%;
+    box-shadow: 0 0 8px var(--primary-color);
+}
+
+#status-text {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--primary-color);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+}
+
+.signal-icon {
+    display: flex;
+    align-items: flex-end;
+    gap: 3px;
+    height: 16px;
+}
+
+.signal-icon .bar {
+    width: 4px;
+    background-color: var(--text-muted);
+    /* Inactive color */
+    border-radius: 1px;
+}
+
+.signal-icon .bar.b1 {
+    height: 6px;
+}
+
+.signal-icon .bar.b2 {
+    height: 9px;
+}
+
+.signal-icon .bar.b3 {
+    height: 12px;
+}
+
+.signal-icon .bar.b4 {
+    height: 16px;
+}
+
+/* Active signal look (simulated via status-bar active class later or just static for now) */
+/* For now, make them all green to match "connected" look of screenshot */
+.signal-icon .bar {
+    background-color: var(--primary-color);
+}
+
+
+/* Main Content */
+.main-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    /* items flow from top */
+    padding-top: 60px;
+}
+
+.channel-header {
+    text-align: center;
+    margin-bottom: 40px;
+}
+
+.subtitle {
+    display: block;
+    font-size: 11px;
+    letter-spacing: 2px;
+    font-weight: 600;
+    color: var(--text-muted);
+    margin-bottom: 12px;
+    text-transform: uppercase;
+}
+
+.channel-name {
+    font-size: 32px;
+    line-height: 1.1;
+    font-weight: 800;
+    color: #fff;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 16px;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.1);
+}
+
+.operator-count {
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 500;
+    letter-spacing: 0.5px;
+}
+
+/* Visualizer */
+.visualizer-container {
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 80px;
+    margin-bottom: auto;
+    /* Push PTT down */
+}
+
+canvas#visualizer {
+    width: 200px;
+    height: 50px;
+    /* We will control color in JS, but opacity here */
+    opacity: 0.9;
+}
+
+
+/* PTT Button Area */
+.ptt-wrapper {
+    position: relative;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    width: 280px;
+    height: 280px;
+    margin-bottom: 40px;
+}
+
+/* Dashed ring decoration */
+.ptt-outer-ring {
+    position: absolute;
+    width: 260px;
+    height: 260px;
+    border-radius: 50%;
+    border: 1px dashed rgba(255, 255, 255, 0.1);
+    animation: rotate 60s linear infinite;
+    z-index: 0;
+}
+
+.ptt-btn {
+    width: 180px;
+    height: 180px;
+    border-radius: 50%;
+    background: linear-gradient(145deg, #1e1e20, #141416);
+    border: none;
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.5),
+        inset 0 2px 4px rgba(255, 255, 255, 0.05);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    cursor: pointer;
+    position: relative;
+    z-index: 10;
+    transition: transform 0.1s ease, box-shadow 0.2s ease;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.ptt-btn span {
+    font-size: 48px;
+    color: var(--text-muted);
+    transition: color 0.2s;
+    opacity: 0.5;
+}
+
+.ptt-btn:active:not(:disabled) {
+    transform: scale(0.95);
+    box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+}
+
+.ptt-btn.talking {
+    box-shadow: 0 0 40px rgba(80, 227, 194, 0.2);
+}
+
+.ptt-btn.talking span {
+    color: var(--primary-color);
+    opacity: 1;
+    text-shadow: 0 0 15px var(--primary-color);
+}
+
+/* PTT Container States for Glow Ring */
+/* app.js adds .transmitting to ptt-container. We changed the structure. 
+   We will rely on .talking class on button for now or adapt logic.
+   Let's ensure the outer ring reacts if possible, but the screenshot just shows a clean UI.
+*/
+
+/* PTT Button Receiving State */
+.ptt-btn.receiving {
+    box-shadow: 0 0 40px rgba(255, 159, 10, 0.4);
+    /* Orange Glow for RX */
+    border-color: #ff9f0a;
+    animation: pulse-rx 1.5s infinite;
+}
+
+.ptt-btn.receiving span {
+    color: #ff9f0a;
+    opacity: 1;
+    text-shadow: 0 0 15px #ff9f0a;
+}
+
+@keyframes pulse-rx {
+    0% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(255, 159, 10, 0.2);
+    }
+
+    50% {
+        transform: scale(1.05);
+        box-shadow: 0 0 50px rgba(255, 159, 10, 0.6);
+    }
+
+    100% {
+        transform: scale(1);
+        box-shadow: 0 0 20px rgba(255, 159, 10, 0.2);
+    }
+}
+
+/* Status Bar Receiving State */
+.status-bar.receiving .status-dot {
+    background-color: #ff9f0a;
+    box-shadow: 0 0 15px #ff9f0a;
+}
+
+.status-bar.receiving #status-text {
+    color: #ff9f0a;
+}
+
+/* Visualizer RX Color Override */
+/* app.js logic will need to set a class on body or container to shift visualizer color if using CSS vars, 
+   but currently it's hardcoded in JS canvas. We'll handle canvas color in JS. */
+
+/* Channel Sheet */
+.channel-sheet {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 70%;
+    background: #15151a;
+    border-radius: 20px 20px 0 0;
+    padding: 24px;
+    z-index: 1000;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+    border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.channel-sheet.show {
+    transform: translateY(0);
+}
+
+.sheet-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: 1px;
+}
+
+.close-btn {
+    background: none;
+    border: none;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 24px;
+}
+
+.channel-list {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    overflow-y: auto;
+}
+
+.channel-item {
+    background: #1c1c1e;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    color: var(--text-color);
+    font-family: var(--font-stack);
+    font-size: 16px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.channel-item:active {
+    transform: scale(0.98);
+}
+
+.channel-item.active {
+    background: rgba(80, 227, 194, 0.1);
+    border-color: var(--primary-color);
+    color: var(--primary-color);
+    box-shadow: 0 0 15px rgba(80, 227, 194, 0.1);
+}
+
+.ch-status {
+    font-size: 10px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.channel-item.active .ch-status {
+    background: var(--primary-color);
+    color: #000;
+}
+
+/* Profile Sheet */
+.profile-sheet {
+    height: 80%;
+    z-index: 1001;
+    /* Above channel sheet if both open (unlikely but safe) */
+}
+
+.profile-content {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    align-items: center;
+}
+
+.profile-card {
+    width: 100%;
+    background: linear-gradient(145deg, #1c1c1e, #15151a);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    border-radius: 16px;
+    padding: 24px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.profile-icon {
+    width: 60px;
+    height: 60px;
+    background: rgba(80, 227, 194, 0.1);
+    border-radius: 50%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--primary-color);
+}
+
+.profile-icon .material-icons-round {
+    font-size: 32px;
+}
+
+.profile-details {
+    flex: 1;
+}
+
+.profile-details .label {
+    font-size: 10px;
+    color: var(--text-muted);
+    font-weight: 700;
+    letter-spacing: 1px;
+    display: block;
+    margin-bottom: 4px;
+}
+
+.profile-details h2 {
+    font-size: 24px;
+    color: #fff;
+    margin-bottom: 8px;
+    letter-spacing: 1px;
+}
+
+.profile-details h3 {
+    font-size: 16px;
+    color: var(--text-muted);
+    font-family: 'Orbitron', monospace;
+    /* Use monospace font if available, or fallback */
+    letter-spacing: 2px;
+}
+
+.status-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 12px;
+    width: 100%;
+}
+
+.status-item {
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 12px;
+    padding: 16px 8px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    border: 1px solid rgba(255, 255, 255, 0.02);
+}
+
+.status-item .material-icons-round {
+    font-size: 24px;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+}
+
+.status-label {
+    font-size: 9px;
+    color: var(--text-muted);
+    margin-bottom: 4px;
+    letter-spacing: 0.5px;
+}
+
+.status-val {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.status-val.secure {
+    color: var(--primary-color);
+}
+
+.status-val.good {
+    color: var(--primary-color);
+}
+
+.action-buttons {
+    width: 100%;
+    margin-top: auto;
+}
+
+.action-btn {
+    width: 100%;
+    padding: 16px;
+    border-radius: 12px;
+    border: none;
+    font-family: var(--font-stack);
+    font-weight: 700;
+    font-size: 14px;
+    cursor: pointer;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    transition: background 0.2s;
+}
+
+.action-btn.danger {
+    background: rgba(255, 59, 48, 0.1);
+    color: var(--danger-color);
+    border: 1px solid rgba(255, 59, 48, 0.3);
+}
+
+.action-btn.danger:active {
+    background: rgba(255, 59, 48, 0.2);
+}
+
+
+/* GPS Panel */
+.gps-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: #0d0d0f;
+    z-index: 2000;
+    display: flex;
+    flex-direction: row;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.gps-panel.show {
+    transform: translateY(0);
+}
+
+/* Sidebar */
+.gps-sidebar {
+    width: 60px;
+    background: #15151a;
+    border-right: 1px solid rgba(255, 255, 255, 0.05);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-top: 20px;
+    gap: 20px;
+}
+
+.gps-nav-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 8px;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.gps-nav-btn.active {
+    background: rgba(80, 227, 194, 0.1);
+    color: var(--primary-color);
+}
+
+.gps-nav-btn.close-gps {
+    margin-top: auto;
+    margin-bottom: 20px;
+    color: var(--danger-color);
+}
+
+/* Main Content */
+.gps-main {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    padding: 20px;
+    position: relative;
+}
+
+.gps-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 20px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    padding-bottom: 10px;
+}
+
+.gps-header h2 {
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: var(--text-muted);
+    font-weight: 700;
+}
+
+.gps-stats {
+    display: flex;
+    gap: 15px;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-color);
+}
+
+.gps-viewport {
+    flex: 1;
+    background: #000;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    overflow: hidden;
+    position: relative;
+}
+
+.view-mode {
+    width: 100%;
+    height: 100%;
+    display: none;
+}
+
+.view-mode.active {
+    display: block;
+}
+
+/* Grid View */
+#gps-grid-view {
+    background-image:
+        radial-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px);
+    background-size: 40px 40px;
+    position: relative;
+}
+
+.unit-dot {
+    position: absolute;
+    width: 12px;
+    height: 12px;
+    background: var(--primary-color);
+    border-radius: 50%;
+    box-shadow: 0 0 10px rgba(80, 227, 194, 0.8);
+    transform: translate(-50%, -50%);
+}
+
+.unit-dot.pulse {
+    animation: gps-pulse 2s infinite;
+}
+
+@keyframes gps-pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(80, 227, 194, 0.7);
+    }
+
+    70% {
+        box-shadow: 0 0 0 20px rgba(80, 227, 194, 0);
+    }
+
+    100% {
+        box-shadow: 0 0 0 0 rgba(80, 227, 194, 0);
+    }
+}
+
+/* Map View */
+#gps-map-view {
+    /* Leaflet takes care of this */
+    z-index: 1;
+}
+
+/* Right Sidebar / Unit List */
+.gps-unit-list {
+    width: 250px;
+    background: #101012;
+    border-left: 1px solid rgba(255, 255, 255, 0.05);
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+/* Dashboard Layout */
+.dashboard-container {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.5s;
+}
+
+.dashboard-container.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* Sidebar */
+.admin-sidebar {
+    width: 300px;
+    background: #1a1a1d;
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    z-index: 10;
+}
+
+/* Units Sidebar */
+.units-sidebar {
+    width: 260px;
+    background: #151518;
+    border-right: 1px solid #333;
+    display: flex;
+    flex-direction: column;
+    z-index: 9;
+}
+
+.units-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 10px;
+}
+
+.unit-item {
+    padding: 12px;
+    background: #252529;
+    margin-bottom: 8px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    cursor: pointer;
+    transition: background 0.2s;
+    border: 1px solid transparent;
+}
+
+.unit-item:hover {
+    background: #2a2a2e;
+    border-color: #444;
+}
+
+.unit-item .u-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: #555;
+}
+
+.unit-item .u-info {
+    display: flex;
+    flex-direction: column;
+}
+
+.unit-item .u-name {
+    font-weight: 700;
+    font-size: 13px;
+    color: #fff;
+}
+
+.unit-item .u-status {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+.sidebar-header {
+    padding: 20px;
+    border-bottom: 1px solid #333;
+}
+
+@media (max-width: 768px) {
+    .gps-panel {
+        flex-direction: column;
+    }
+
+    .gps-sidebar {
+        width: 100%;
+        height: 50px;
+        flex-direction: row;
+        padding: 0 20px;
+        gap: 10px;
+        order: 2;
+        border-right: none;
+        border-top: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .gps-unit-list {
+        display: none;
+        /* Hide list on mobile to save space, maybe add toggle later */
+    }
+
+    .gps-nav-btn.close-gps {
+        margin: 0 0 0 auto;
+    }
+}
+
+.unit-card {
+    background: #1c1c1e;
+    padding: 12px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.unit-card .dot {
+    width: 8px;
+    height: 8px;
+    background: #555;
+    border-radius: 50%;
+}
+
+.unit-card.status-ok .dot {
+    background: var(--primary-color);
+    box-shadow: 0 0 8px var(--primary-color);
+}
+
+.unit-card.status-busy .dot {
+    background: #5097E3;
+    box-shadow: 0 0 8px #5097E3;
+}
+
+.unit-card.status-warn .dot {
+    background: #FF9F0A;
+    box-shadow: 0 0 8px #FF9F0A;
+}
+
+.unit-card .info {
+    display: flex;
+    flex-direction: column;
+}
+
+.unit-card .u-name {
+    font-size: 12px;
+    font-weight: 700;
+    color: #fff;
+}
+
+.unit-card .u-status {
+    font-size: 10px;
+    color: var(--text-muted);
+}
+
+/* Bottom Navigation */
+.bottom-nav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    padding: 0 20px;
+    /* Adjusted padding */
+    margin-bottom: 10px;
+    /* Space from bottom */
+}
+
+.nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    opacity: 0.6;
+    background: transparent;
+    transition: opacity 0.2s;
+}
+
+.nav-item.active {
+    color: var(--primary-color);
+    opacity: 1;
+}
+
+.nav-item .material-icons-round {
+    font-size: 24px;
+}
+
+.nav-item .status-text.error-blink {
+    color: #ff3b30;
+    animation: blink 1s infinite;
+}
+
+@keyframes blink {
+    0% { opacity: 1; }
+    50% { opacity: 0.3; }
+    100% { opacity: 1; }
+}
+
+/* Animations */
+@keyframes pulse {
+    0% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+
+    50% {
+        opacity: 1;
+        transform: scale(1.1);
+    }
+
+    100% {
+        opacity: 0.5;
+        transform: scale(1);
+    }
+}
+
+@keyframes rotate {
+    from {
+        transform: rotate(0deg);
+    }
+
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+/* Responsive utilities */
+@media (max-height: 700px) {
+    .main-content {
+        padding-top: 40px;
+    }
+
+    .ptt-wrapper {
+        width: 220px;
+        height: 220px;
+    }
+
+    .ptt-outer-ring {
+        width: 200px;
+        height: 200px;
+    }
+
+    .ptt-btn {
+        width: 140px;
+        height: 140px;
+    }
+}
+
+/* Tactical Override Overlay */
+.override-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(255, 59, 48, 0.85);
+    /* Red transparent */
+    backdrop-filter: blur(10px);
+    z-index: 9999;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease-out;
+}
+
+.override-overlay.show {
+    opacity: 1;
+    pointer-events: auto;
+    animation: flash-red 1s infinite alternate;
+}
+
+@keyframes flash-red {
+    0% {
+        background: rgba(255, 59, 48, 0.85);
+    }
+
+    100% {
+        background: rgba(200, 20, 15, 0.95);
+    }
+}
+
+.override-content {
+    text-align: center;
+    color: white;
+    font-family: var(--font-stack);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 15px;
+    transform: scale(0.9);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.override-overlay.show .override-content {
+    transform: scale(1);
+}
+
+.override-icon {
+    font-size: 80px;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(255, 255, 255, 0.5);
+    margin-bottom: 10px;
+}
+
+.override-title {
+    font-size: 32px;
+    font-weight: 800;
+    letter-spacing: 2px;
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+.override-message {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 1px;
+    opacity: 0.9;
+    text-transform: uppercase;
+    padding: 10px 20px;
+    background: rgba(0, 0, 0, 0.3);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.hidden {
+    display: none !important;
+}

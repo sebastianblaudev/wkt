@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TACTICAL GPS OVERWATCH</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="style.css">
+    <style>
+        /* Specific overrides for GPS Admin Page */
+        body {
+            background-color: #0d0d0f;
+            overflow: hidden;
+        }
+
+        .gps-panel {
+            transform: translateY(0);
+            display: flex;
+            position: relative;
+            height: 100vh;
+            width: 100vw;
+        }
+
+        .gps-nav-btn.close-gps {
+            display: none;
+        }
+
+        /* No close button on dedicated page */
+        #start-overlay {
+            display: flex;
+        }
+
+        /* Reuse auth overlay */
+    </style>
+</head>
+
+<body>
+
+    <!-- Start Overlay (Admin Login essentially) -->
+    <div id="start-overlay" class="start-overlay">
+        <div class="tap-icon">map</div>
+        <p>INITIALIZE OVERWATCH</p>
+    </div>
+
+    <!-- GPS Panel (Main View) -->
+    <div id="gps-panel" class="gps-panel show">
+        <div class="gps-sidebar">
+            <div class="gps-nav-btn active" id="view-grid-btn">
+                <span class="material-icons-round">grid_view</span>
+            </div>
+            <div class="gps-nav-btn" id="view-map-btn">
+                <span class="material-icons-round">map</span>
+            </div>
+        </div>
+
+        <div class="gps-main">
+            <div class="gps-header">
+                <h2>OPERATIONAL OVERWATCH - ADMIN</h2>
+                <div class="gps-stats">
+                    <span id="chaos-index-val" style="color:#50E3C2; margin-right: 15px;">CHAOS: 0% (BAJO)</span>
+                    <span id="active-units-count">UNITS: 0</span>
+                </div>
+            </div>
+
+            <div class="gps-viewport">
+                <!-- Grid View -->
+                <div id="gps-grid-view" class="view-mode active">
+                    <div class="grid-background"></div>
+                    <!-- Markers injected via JS -->
+                </div>
+
+                <!-- Real Map View -->
+                <div id="gps-map-view" class="view-mode"></div>
+            </div>
+        </div>
+
+        <div class="gps-unit-list" id="unit-list-container">
+            <!-- Unit cards injected here -->
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script type="module" src="gps-admin.js"></script>
+</body>
+
+</html>

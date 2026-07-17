@@ -1,0 +1,24 @@
+# TURN relay for WebRTC behind restrictive NAT/cellular networks.
+# coturn uses a shared STATIC_AUTH_SECRET; the Node server mints short-lived
+# TURN credentials from the same secret and hands them to clients over the
+# already-authenticated socket. The secret never reaches the browser.
+services:
+  turn:
+    image: coturn/coturn:latest
+    restart: unless-stopped
+    network_mode: host
+    command:
+      - turnserver
+      - --listening-port=3478
+      - --tls-listening-port=5349
+      - --relay-ip=0.0.0.0
+      - --external-ip=${TURN_EXTERNAL_IP}
+      - --lt-cred-mech
+      - --static-auth-secret=${TURN_SECRET}
+      - --realm=${TURN_REALM:-walkie.local}
+      - --use-auth-secret
+      - --no-cli
+      - --min-port=49152
+      - --max-port=65535
+    environment:
+      - TURN_SECRET=${TURN_SECRET}

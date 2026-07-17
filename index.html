@@ -1,0 +1,266 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>WALKIE TALKIE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons+Round" rel="stylesheet">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+        integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
+    <link rel="stylesheet" href="style.css">
+    
+    <!-- PWA Settings -->
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#000000">
+    <!-- iOS meta tags & icons -->
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="WalkieTalkie">
+    <link rel="apple-touch-icon" href="logo.png">
+</head>
+
+<body>
+    <!-- Hidden controls to maintain app.js compatibility -->
+    <div style="display: none;">
+        <input type="text" id="room-input" value="MAIN">
+        <button id="join-btn">JOIN</button>
+        <button id="power-btn">PWR</button>
+    </div>
+
+    <!-- Start Overlay (To handle Autoplay policy and "Power On") -->
+    <div id="start-overlay" class="start-overlay">
+        <div class="tap-icon">power_settings_new</div>
+        <p>TAP TO ACTIVATE</p>
+    </div>
+
+    <div class="app-container">
+        <!-- Top Status Bar -->
+        <div class="status-bar">
+            <div class="status-left">
+                <div class="status-dot"></div>
+                <span id="status-text">STANDBY</span>
+            </div>
+            <div class="signal-icon">
+                <span class="bar b1"></span>
+                <span class="bar b2"></span>
+                <span class="bar b3"></span>
+                <span class="bar b4"></span>
+            </div>
+        </div>
+
+        <!-- Main Content -->
+        <div class="main-content">
+            <div class="channel-header">
+                <span class="subtitle">ACTIVE CHANNEL</span>
+                <h1 class="channel-name">MAIN<br>OPERATION</h1>
+                <span class="operator-count" id="operator-count-display">-- OPERATORS ONLINE</span>
+            </div>
+
+            <div class="visualizer-container">
+                <canvas id="visualizer" width="300" height="60"></canvas>
+                <!-- We hide remote visualizer visually but keep it in DOM if needed, or overlay it. 
+                     For now, let's just use one main visualizer for the 'look'. -->
+                <canvas id="remote-visualizer" width="300" height="60" style="display:none;"></canvas>
+            </div>
+
+            <div class="ptt-wrapper">
+                <div class="ptt-outer-ring"></div>
+                <button id="talk-btn" class="ptt-btn" disabled>
+                    <span class="material-icons-round">mic</span>
+                </button>
+            </div>
+        </div>
+
+        <!-- GPS Panel (Full Screen Overlay) -->
+        <div id="gps-panel" class="gps-panel">
+            <div class="gps-sidebar">
+                <div class="gps-nav-btn active" id="view-grid-btn">
+                    <span class="material-icons-round">grid_view</span>
+                </div>
+                <div class="gps-nav-btn" id="view-map-btn">
+                    <span class="material-icons-round">map</span>
+                </div>
+                <!-- Close within sidebar or sidebar logic -->
+                <div class="gps-nav-btn close-gps" id="close-gps-sidebar">
+                    <span class="material-icons-round">close</span>
+                </div>
+            </div>
+
+            <div class="gps-main">
+                <div class="gps-header">
+                    <h2>OPERATIONAL OVERWATCH</h2>
+                    <div class="gps-stats">
+                        <span>UNITS: 12</span>
+                        <span>ACTIVE: 08</span>
+                    </div>
+                </div>
+
+                <div class="gps-viewport">
+                    <!-- Grid View (Space restricted) -->
+                    <div id="gps-grid-view" class="view-mode active">
+                        <div class="grid-background"></div>
+                        <!-- Dots will be injected here via JS -->
+                        <div class="unit-dot" style="top: 40%; left: 30%;"></div>
+                        <div class="unit-dot" style="top: 60%; left: 60%;"></div>
+                        <div class="unit-dot pulse" style="top: 30%; left: 70%;"></div>
+                    </div>
+
+                    <!-- Real Map View -->
+                    <div id="gps-map-view" class="view-mode"></div>
+                </div>
+            </div>
+
+            <div class="gps-unit-list">
+                <div class="unit-card status-ok">
+                    <div class="dot"></div>
+                    <div class="info">
+                        <span class="u-name">ALPHA-1</span>
+                        <span class="u-status">STANDING BY</span>
+                    </div>
+                </div>
+                <div class="unit-card status-busy">
+                    <div class="dot"></div>
+                    <div class="info">
+                        <span class="u-name">BRAVO-4</span>
+                        <span class="u-status">EN ROUTE</span>
+                    </div>
+                </div>
+                <div class="unit-card status-warn">
+                    <div class="dot"></div>
+                    <div class="info">
+                        <span class="u-name">DELTA-2</span>
+                        <span class="u-status">LOW SIGNAL</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Profile Sheet -->
+        <div id="profile-sheet" class="channel-sheet profile-sheet">
+            <div class="sheet-header">
+                <span>OPERATOR PROFILE</span>
+                <button id="close-profile" class="close-btn"><span class="material-icons-round">close</span></button>
+            </div>
+            <div class="profile-content">
+                <div class="profile-card">
+                    <div class="profile-icon">
+                        <span class="material-icons-round">shield</span>
+                    </div>
+                    <div class="profile-details">
+                        <span class="label">CALL SIGN</span>
+                        <h2 id="profile-callsign">ALPHA-01</h2>
+                        <span class="label">UNIT ID</span>
+                        <h3 id="profile-id">--</h3>
+                    </div>
+                </div>
+
+                <div class="status-grid">
+                    <div class="status-item">
+                        <span class="material-icons-round">verified_user</span>
+                        <span class="status-label">ENCRYPTION</span>
+                        <span class="status-val secure">AES-256</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="material-icons-round">battery_std</span>
+                        <span class="status-label">BATTERY</span>
+                        <span class="status-val">98%</span>
+                    </div>
+                    <div class="status-item">
+                        <span class="material-icons-round">wifi_tethering</span>
+                        <span class="status-label">LINK QUALITY</span>
+                        <span class="status-val good">OPTIMAL</span>
+                    </div>
+                </div>
+
+                <div class="action-buttons">
+                    <button id="disconnect-btn" class="action-btn danger">
+                        <span class="material-icons-round">power_settings_new</span>
+                        DISCONNECT
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Channel Selector Sheet -->
+        <div id="channel-sheet" class="channel-sheet">
+            <div class="sheet-header">
+                <span>SELECT CHANNEL</span>
+                <button id="close-channels" class="close-btn"><span class="material-icons-round">close</span></button>
+            </div>
+            <div class="channel-list">
+                <!-- Channels injected via JS -->
+                <div class="empty-state" style="padding: 20px; text-align: center; color: #666;">
+                    Connect to an Operation...
+                </div>
+            </div>
+        </div>
+
+        <!-- Bottom Navigation -->
+        <div class="bottom-nav">
+            <div class="nav-item" id="nav-channels">
+                <span class="material-icons-round">grid_view</span>
+                <span class="nav-label">CHANNELS</span>
+            </div>
+            <div class="nav-item" id="nav-gps">
+                <span class="material-icons-round">map</span>
+                <span class="nav-label">GPS</span>
+            </div>
+            <div class="nav-item active" id="nav-ptt">
+                <span class="material-icons-round">radio_button_checked</span>
+                <span class="nav-label">PTT</span>
+            </div>
+            <div class="nav-item" id="nav-profile">
+                <!-- Changed icon to person_outline or similar if desired, keeping person for now -->
+                <span class="material-icons-round">person</span>
+                <span class="nav-label">PROFILE</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="server-config" id="server-config-btn"
+        style="position: fixed; bottom: 10px; left: 10px; opacity: 0; pointer-events: auto; width: 20px; height: 20px;">
+    </div>
+
+    <!-- Tactical Override Overlay -->
+    <div id="override-overlay" class="override-overlay hidden">
+        <div class="override-content">
+            <span class="material-icons-round override-icon">warning</span>
+            <div class="override-title">TACTICAL OVERRIDE</div>
+            <div class="override-message" id="override-message">REROUTING COMMS...</div>
+        </div>
+    </div>
+
+    <!-- SOS Countdown Overlay -->
+    <div id="sos-countdown-overlay" class="override-overlay hidden" style="background: rgba(255, 59, 48, 0.9);">
+        <div class="override-content">
+            <span class="material-icons-round override-icon" style="color:#fff;">sensors</span>
+            <div class="override-title" style="color:#fff;">MAN DOWN PROTOCOL</div>
+            <div class="override-message" style="color:#fff;" id="sos-timer">ACTIVATING SOS IN 15s</div>
+            <button id="cancel-sos-btn" class="btn-primary"
+                style="margin-top: 20px; background: #fff; color: #ff3b30;">CANCEL AUTO-SOS</button>
+        </div>
+    </div>
+
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script type="module" src="app.js"></script>
+
+
+    <!-- Script to register Service Worker for PWA -->
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('sw.js')
+                    .then(reg => console.log('Service Worker registered.', reg))
+                    .catch(err => console.log('Service Worker registration failed.', err));
+            });
+        }
+    </script>
+</body>
+
+</html>

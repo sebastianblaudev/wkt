@@ -1,0 +1,34 @@
+services:
+  - type: web
+    name: walkie-talkie-server-fix
+    env: node
+    plan: starter # free tier sleeps; use starter+ for a real, always-on server
+    region: oregon # pick the region closest to your users
+    buildCommand: npm install
+    startCommand: node server.cjs
+    healthCheckPath: /health
+    # Auto-restart + zero-downtime deploys keep the server stable in production.
+    restartPolicy: on-failure
+    restartPolicyMaxRetries: 10
+    numInstances: 1 # bump to 2+ behind the same DB when you need redundancy
+    envVars:
+      - key: PORT
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_KEY
+        sync: false
+      - key: SUPER_ADMIN_KEY
+        sync: false
+      - key: SIGNAL_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: TURN_SECRET
+        sync: false
+      - key: TURN_URLS
+        sync: false
+      - key: TURN_EXTERNAL_IP
+        sync: false
+      - key: RENDER_EXTERNAL_URL
+        sync: true # Render injects this automatically

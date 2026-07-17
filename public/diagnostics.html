@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <title>Socket Diagnostics</title>
+    <style>
+        body {
+            background: #111;
+            color: #0f0;
+            font-family: monospace;
+            padding: 20px;
+        }
+
+        #log {
+            border: 1px solid #333;
+            padding: 10px;
+            height: 300px;
+            overflow-y: scroll;
+            white-space: pre-wrap;
+        }
+
+        input,
+        button {
+            padding: 10px;
+            background: #222;
+            color: #fff;
+            border: 1px solid #444;
+        }
+
+        .success {
+            color: #0f0;
+        }
+
+        .error {
+            color: #f00;
+        }
+
+        .info {
+            color: #0ff;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Socket.io Diagnostics</h1>
+    <div>
+        <label>Server URL:</label>
+        <input type="text" id="serverUrl" value="https://walkie-talkie-remote.onrender.com" style="width: 300px;">
+        <button onclick="connect()">Connect</button>
+        <button onclick="disconnect()">Disconnect</button>
+    </div>
+    <br>
+    <div>
+        <label>Room ID:</label>
+        <input type="text" id="roomId" value="777">
+        <button onclick="joinRoom()">Join Room</button>
+    </div>
+    <br>
+    <div>
+        <label>Emit Custom:</label>
+        <input type="text" id="eventName" placeholder="Event Name">
+        <input type="text" id="eventData" placeholder="JSON Data">
+        <button onclick="emitCustom()">Emit</button>
+    </div>
+    <br>
+    <div id="status">Status: Disconnected</div>
+    <div id="log"></div>
+
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+    <script>
+        let socket;
+
+        function log(msg, type = 'info') {
+            const el = document.getElementById('log');
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+            el.appendChild(entry);
+            el.scrollTop = el.scrollHeight;
+            console.log(msg);
+        }
+
+        function connect() {
+            if (socket) socket.disconnect();
+            const url = document.getElementById('serverUrl').value;
+            log(`Connecting to ${url}...`);
+
+            socket = io(url);
+
+            socket.on('connect', () => {
+                log(`Connected! ID: ${socket.id}`, 'success');
+                document.getElementById('status').innerText = `Status: Connected (${socket.id})`;
+            });
+
+            socket.on('connect_error', (err) => {
+                log(`Connection Error: ${err.message}`, 'error');
+            });
+
+            socket.on('disconnect', () => {
+                log('Disconnected', 'error');
+                document.getElementById('status').innerText = 'Status: Disconnected';
+            });
+
+            // Listen for ALL standard events from app.js inspection
+            socket.on('user-connected', (id) => log(`EVENT: user-connected -> ${id}`, 'success'));
+            socket.on('user-disconnected', (id) => log(`EVENT: user-disconnected -> ${id}`, 'success'));
+            socket.on('offer', (data) => log(`EVENT: offer from ${data.caller}`, 'info'));
+            socket.on('answer', (data) => log(`EVENT: answer from ${data.caller}`, 'info'));
+            socket.on('ice-candidate', (data) => log(`EVENT: ice-candidate from ${data.caller}`, 'info'));
+
+            // Catch-all (if supported by client lib, usually needs patch)
+            socket.onAny && socket.onAny((event, ...args) => {
+                log(`[ANY] ${event}: ${JSON.stringify(args)}`);
+            });
+        }
+
+        function disconnect() {
+            if (socket) socket.disconnect();
+        }
+
+        function joinRoom() {
+            if (!socket || !socket.connected) return log('Not connected', 'error');
+            const room = document.getElementById('roomId').value;
+            log(`Joining room: ${room}`);
+            socket.emit('join-room', room);
+        }
+
+        function emitCustom() {
+            if (!socket || !socket.connected) return log('Not connected', 'error');
+            const event = document.getElementById('eventName').value;
+            let data = document.getElementById('eventData').value;
+            try {
+                if (data) data = JSON.parse(data);
+            } catch (e) { log('Invalid JSON data', 'error'); return; }
+
+            log(`Emitting ${event} with ${JSON.stringify(data)}`);
+            socket.emit(event, data);
+        }
+    </script>
+</body>
+
+</html>

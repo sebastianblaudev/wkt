@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VANT // SECURE OPERATIONS</title>
+
+    <!-- Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+
+    <link rel="stylesheet" href="landing.css">
+    <link rel="icon" type="image/png" href="logo.png">
+</head>
+
+<body>
+    <!-- Initial Loader -->
+    <div id="loader" class="loader-overlay">
+        <div class="loader-content">
+            <img src="logo.png" alt="VANT" class="loader-logo">
+            <div class="loader-bar"></div>
+            <div class="loader-status">INITIALIZING SECURE PROTOCOLS...</div>
+        </div>
+    </div>
+
+    <!-- Header -->
+    <header class="landing-header">
+        <div class="header-logo">
+            <img src="logo.png" alt="VANT">
+        </div>
+        <button class="access-btn">REQUEST ACCESS</button>
+    </header>
+
+    <!-- Hero Section -->
+    <section class="hero-section">
+        <div class="hero-slider">
+            <div class="hero-slide active" style="background-image: url('use-case-vip.jpg')"></div>
+            <div class="hero-slide" style="background-image: url('use-case-hero-2.jpg')"></div>
+            <div class="hero-slide" style="background-image: url('use-case-hero-3.jpg')"></div>
+        </div>
+
+        <div class="hero-content">
+            <div class="hero-tagline">TACTICAL COMMUNICATION SYSTEMS</div>
+            <h1 class="hero-title">SECURE<br>OPERATIONS<span style="color: var(--brand-accent)">.</span></h1>
+            <p class="hero-desc">The standard for elite organizations. Encrypted. Invisible. Immediate.</p>
+            <a href="mailto:access@vant.com" class="cta-btn">REQUEST BRIEFING</a>
+        </div>
+    </section>
+
+    <!-- Showcase Section -->
+    <section class="showcase-section">
+        <div class="section-header center">
+            <h2 class="section-title">UNIFIED <span class="text-brand">BATTLESPACE</span></h2>
+            <p class="section-subtitle">COMMAND AND CONTROL ACROSS ALL CHANNELS</p>
+        </div>
+
+        <div class="showcase-tabs">
+            <button class="tab-btn active" data-tab="field">FIELD UNIT</button>
+            <button class="tab-btn" data-tab="command">COMMAND OVERWATCH</button>
+        </div>
+
+        <div class="showcase-display">
+            <!-- Field Unit (Mobile) -->
+            <div class="showcase-view active" id="field-view">
+                <div class="phone-frame">
+                    <div class="phone-screen">
+                        <div class="phone-notch"></div>
+                        <div class="ptt-mock">
+                            <!-- Status Bar -->
+                            <div class="mock-status-bar">
+                                <div class="mock-connection">
+                                    <div class="status-dot pulsing"></div>
+                                    <span id="mock-status-text">STANDBY</span>
+                                </div>
+                                <div class="mock-signal">
+                                    <div class="bar active" style="height: 6px;"></div>
+                                    <div class="bar active" style="height: 9px;"></div>
+                                    <div class="bar active" style="height: 12px;"></div>
+                                    <div class="bar" style="height: 15px;"></div>
+                                </div>
+                            </div>
+
+                            <!-- Channel Display -->
+                            <div class="mock-channel-display">
+                                <div class="m-label">ACTIVE CHANNEL</div>
+                                <div class="m-name">MAIN OPERATION</div>
+                                <div class="m-meta">4 OPERATORS ONLINE</div>
+                            </div>
+
+                            <!-- Visualizer Mock -->
+                            <div class="mock-visualizer">
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                                <div class="v-bar"></div>
+                            </div>
+
+                            <!-- PTT Button Section -->
+                            <div class="mock-ptt-section">
+                                <div class="mock-ptt-ring"></div>
+                                <div class="mock-ptt-btn">
+                                    <div class="mock-ptt-icon">
+                                        <svg width="40" height="40" viewBox="0 0 40 40" fill="none">
+                                            <path
+                                                d="M20 5C17.2386 5 15 7.23858 15 10V20C15 22.7614 17.2386 25 20 25C22.7614 25 25 22.7614 25 20V10C25 7.23858 22.7614 5 20 5Z"
+                                                stroke="currentColor" stroke-width="2.5" />
+                                            <path d="M12 18C12 18 12 24 20 24C28 24 28 18 28 18" stroke="currentColor"
+                                                stroke-width="2.5" stroke-linecap="round" />
+                                            <path d="M20 28V35M20 35H14M20 35H26" stroke="currentColor"
+                                                stroke-width="2.5" stroke-linecap="round" />
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Bottom Nav Mock -->
+                            <div class="mock-bottom-nav">
+                                <div class="m-nav-item"><i class="fas fa-th"></i><span>CHANNELS</span></div>
+                                <div class="m-nav-item active"><i class="fas fa-dot-circle"></i><span>PTT</span></div>
+                                <div class="m-nav-item"><i class="fas fa-user-circle"></i><span>PROFILE</span></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Command Overwatch (Desktop) -->
+            <div class="showcase-view" id="command-view">
+                <div class="laptop-frame">
+                    <div class="laptop-screen">
+                        <div class="dash-mock">
+                            <div class="dash-sidebar">
+                                <div class="sidebar-item active"><i class="fas fa-th-large"></i></div>
+                                <div class="sidebar-item"><i class="fas fa-map-marked-alt"></i></div>
+                                <div class="sidebar-item"><i class="fas fa-users"></i></div>
+                            </div>
+                            <div class="dash-main">
+                                <div class="dash-header">
+                                    <span>OPERATIONAL OVERWATCH</span>
+                                    <div class="dash-stats">
+                                        <div class="stat"><span>UNITS:</span> 12</div>
+                                        <div class="stat"><span>ACTIVE:</span> 08</div>
+                                    </div>
+                                </div>
+                                <div class="dash-content">
+                                    <div class="map-placeholder">
+                                        <div class="map-pointer" style="top: 30%; left: 40%;"></div>
+                                        <div class="map-pointer" style="top: 50%; left: 60%;"></div>
+                                        <div class="map-pointer" style="top: 20%; left: 70%;"></div>
+                                    </div>
+                                    <div class="status-list">
+                                        <div class="status-item"><span class="dot green"></span> ALPHA-1: STANDING BY
+                                        </div>
+                                        <div class="status-item"><span class="dot green"></span> BRAVO-4: EN ROUTE</div>
+                                        <div class="status-item"><span class="dot orange"></span> DELTA-2: LOW SIGNAL
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- Industries Section -->
+    <section class="industries-section">
+        <div class="section-header">
+            <h2 class="section-title">DEPLOYMENT <span class="text-brand">VECTORS</span></h2>
+            <p class="section-subtitle">OPTIMIZED FOR CRITICAL ENVIRONMENTS</p>
+        </div>
+
+        <div class="industry-grid">
+            <div class="industry-card">
+                <div class="card-icon"><i class="fas fa-shield-alt"></i></div>
+                <h3 class="card-title">PRIVATE SECURITY</h3>
+                <p class="card-desc">End-to-end encrypted channels for high-risk protection details. Zero latency. Zero
+                    leaks.</p>
+            </div>
+            <div class="industry-card">
+                <div class="card-icon"><i class="fas fa-network-wired"></i></div>
+                <h3 class="card-title">GLOBAL LOGISTICS</h3>
+                <p class="card-desc">Real-time fleet coordination across continents. Centralized command for
+                    decentralized operations.</p>
+            </div>
+            <div class="industry-card">
+                <div class="card-icon"><i class="fas fa-user-secret"></i></div>
+                <h3 class="card-title">VIP EVENTS</h3>
+                <p class="card-desc">Discrete communication networks for high-profile event management. Invisible to the
+                    public.</p>
+            </div>
+            <div class="industry-card">
+                <div class="card-icon"><i class="fas fa-hard-hat"></i></div>
+                <h3 class="card-title">MEGA PROJECTS</h3>
+                <p class="card-desc">Rugged connectivity for large-scale infrastructure sites. Instant push-to-talk for
+                    thousands.</p>
+            </div>
+        </div>
+    </section>
+
+    <!-- Exclusivity Section -->
+    <section class="exclusivity-section">
+        <div class="exclusivity-content">
+            <div class="security-badge">INVITATION REQUIRED</div>
+            <h2 class="hero-title" style="font-size: 48px; margin-bottom: 24px;">MEMBERS ONLY</h2>
+            <p class="hero-desc">VANT is not for everyone. Access is granted to organizations that demand the absolute
+                best in operational security.</p>
+            <a href="index.html" class="cta-btn"
+                style="background: transparent; border: 1px solid var(--brand); color: var(--brand);">CLIENT LOGIN</a>
+        </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="landing-footer">
+        <div class="footer-copy">© 2026 VANT SYSTEMS. ALL RIGHTS RESERVED.</div>
+        <div class="footer-links">
+            <a href="#" class="footer-link">PRIVACY</a>
+            <a href="#" class="footer-link">TERMS</a>
+            <a href="#" class="footer-link">CONTACT</a>
+        </div>
+    </footer>
+
+    <script>
+        // Initial Loader
+        window.addEventListener('load', () => {
+            const loader = document.getElementById('loader');
+            setTimeout(() => {
+                loader.classList.add('fade-out');
+                setTimeout(() => {
+                    loader.style.display = 'none';
+                }, 1500); // Match transition duration
+            }, 1000); // Artificial delay for "wow" effect
+        });
+
+        // Tab Switching
+        const tabBtns = document.querySelectorAll('.tab-btn');
+        const views = document.querySelectorAll('.showcase-view');
+
+        tabBtns.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const target = btn.getAttribute('data-tab');
+                tabBtns.forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                views.forEach(v => {
+                    v.classList.remove('active');
+                    if (v.id === `${target}-view`) {
+                        v.classList.add('active');
+                    }
+                });
+            });
+        });
+
+        // Scroll Reveal
+        const observer = new IntersectionObserver((entries) => {
+            entries.forEach(entry => {
+                if (entry.isIntersecting) {
+                    entry.target.style.opacity = 1;
+                    entry.target.style.transform = 'translateY(0)';
+                }
+            });
+        });
+
+        document.querySelectorAll('.industry-card, .showcase-section').forEach(el => {
+            el.style.opacity = 0;
+            el.style.transform = 'translateY(20px)';
+            el.style.transition = 'all 0.6s ease';
+            observer.observe(el);
+        });
+
+        // Mouse Parallax for Mockups
+        document.addEventListener('mousemove', (e) => {
+            const phone = document.querySelector('.phone-frame');
+            const laptop = document.querySelector('.laptop-frame');
+
+            const xAxis = (window.innerWidth / 2 - e.pageX) / 45;
+            const yAxis = (window.innerHeight / 2 - e.pageY) / 45;
+
+            if (phone) phone.style.transform = `perspective(1500px) rotateY(${25 + xAxis}deg) rotateX(${4 + yAxis}deg)`;
+            if (laptop) laptop.style.transform = `perspective(1200px) rotateY(${-10 + xAxis / 2}deg) rotateX(${5 + yAxis / 2}deg)`;
+        });
+
+        // Hero Background Rotation
+        const slides = document.querySelectorAll('.hero-slide');
+        let currentSlide = 0;
+
+        function nextSlide() {
+            slides[currentSlide].classList.remove('active');
+            currentSlide = (currentSlide + 1) % slides.length;
+            slides[currentSlide].classList.add('active');
+        }
+
+        if (slides.length > 1) {
+            setInterval(nextSlide, 5000); // Rotate every 5 seconds
+        }
+
+        document.querySelector('.access-btn').addEventListener('click', () => {
+            window.location.href = 'mailto:access@vant.com';
+        });
+    </script>
+</body>
+
+</html>
