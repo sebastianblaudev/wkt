@@ -629,10 +629,11 @@ const manDownEnabled = (() => {
 let manDownTimer = null;
 let sosCountdown = 15;
 let lastMotionTime = Date.now();
-const INACTIVITY_THRESHOLD = 60000; // 60 seconds
-const FALL_THRESHOLD = 20; // High acceleration
+const INACTIVITY_THRESHOLD = 60000; // 60 seconds (disabled below)
+const FALL_THRESHOLD = 35; // High acceleration — real fall, not a shake
 let isSosActive = false;
 let sosCountdownInterval = null;
+let highImpactStreak = 0; // require consecutive high readings to confirm a fall
 
 const sosOverlay = document.getElementById('sos-countdown-overlay');
 const sosTimerDisplay = document.getElementById('sos-timer');
@@ -707,8 +708,16 @@ window.addEventListener('devicemotion', (e) => {
     const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
 
     if (magnitude > FALL_THRESHOLD) {
-        console.log("Significant impact detected.");
-        triggerManDown();
+        highImpactStreak++;
+        // Require 3 consecutive high-impact readings (~150ms+ of force) so a
+        // single shake / bump does not trigger a false Man Down.
+        if (highImpactStreak >= 3) {
+            console.log("Significant impact detected.");
+            triggerManDown();
+            highImpactStreak = 0;
+        }
+    } else {
+        highImpactStreak = 0;
     }
 
     if (Math.abs(magnitude - 9.8) > 1.0) {
@@ -718,10 +727,8 @@ window.addEventListener('devicemotion', (e) => {
 
 setInterval(() => {
     if (!isPoweredOn || isSosActive) return;
-    if (Date.now() - lastMotionTime > INACTIVITY_THRESHOLD) {
-        console.log("Inactivity detected.");
-        triggerManDown();
-    }
+    // Inactivity-based SOS disabled: it fired falsely when the phone was at rest.
+    // Man Down now only triggers on a real high-impact fall (see devicemotion).
     // Periodic MediaSession refresh to keep alive
     if (isPoweredOn && roomId) updateMediaSession();
 }, 5000);
