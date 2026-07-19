@@ -107,28 +107,33 @@ function emitInsight(opId, insight) {
 
 // Recompute and push AI insight for an operation (called on relevant events).
 async function pushInsight(opId, { dispatchTask = null } = {}) {
-    const events = eventBuffers[opId] || [];
-    const st = opUnitState[opId] || { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
-    const mode = autonomyMode[opId] || 'SUGGEST_ONLY';
+    try {
+        const events = eventBuffers[opId] || [];
+        const st = opUnitState[opId] || { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
+        const mode = autonomyMode[opId] || 'SUGGEST_ONLY';
 
-    const summary = AI.summarizeShift(events);
-    const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents, sosActive: st.sosActive });
-    const mem = (await supabase.from('operational_memory').select('learned, summary').eq('op_id', opId).single().catch(() => ({ data: null })))?.data;
-    const learned = mem ? AI.learnFromShift(mem, events) : { predictions: [] };
-    const dispatch = dispatchTask ? AI.recommendDispatch(Object.values(st.units), dispatchTask) : null;
+        const summary = AI.summarizeShift(events);
+        const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents, sosActive: st.sosActive });
+        let mem = null;
+        try { mem = (await supabase.from('operational_memory').select('learned, summary').eq('op_id', opId).single())?.data; } catch (_) {}
+        const learned = mem ? AI.learnFromShift(mem, events) : { predictions: [] };
+        const dispatch = dispatchTask ? AI.recommendDispatch(Object.values(st.units), dispatchTask) : null;
 
-    const insight = AI.buildInsight({ mode, summary, actions, predictions: learned.predictions, dispatch });
-    emitInsight(opId, insight);
+        const insight = AI.buildInsight({ mode, summary, actions, predictions: learned.predictions, dispatch });
+        emitInsight(opId, insight);
 
-    // AUTO_EXECUTE: act on the top critical action without waiting for approval.
-    if (mode === 'AUTO_EXECUTE' && dispatchTask && dispatch && dispatch.recommended?.length) {
-        dispatch.recommended.forEach(uid => {
-            const u = Object.values(st.units).find(x => x.id === uid);
-            if (u?.socketId) emitForceJoin(u.socketId, opId, dispatchTask.channel || 'BASE');
-        });
-        await logEvent(opId, 'dispatch-auto', { recommended: dispatch.recommended, task: dispatchTask });
+        // AUTO_EXECUTE: act on the top critical action without waiting for approval.
+        if (mode === 'AUTO_EXECUTE' && dispatchTask && dispatch && dispatch.recommended?.length) {
+            dispatch.recommended.forEach(uid => {
+                const u = Object.values(st.units).find(x => x.id === uid);
+                if (u?.socketId) emitForceJoin(u.socketId, opId, dispatchTask.channel || 'BASE');
+            });
+            await logEvent(opId, 'dispatch-auto', { recommended: dispatch.recommended, task: dispatchTask });
+        }
+        return insight;
+    } catch (e) {
+        console.error('[AI] pushInsight error:', e?.message || e);
     }
-    return insight;
 }
 
 // --- TURN credentials (ephemeral, derived from a shared static auth secret) ---
