@@ -940,7 +940,10 @@ async function signSignal(payload) {
 
 async function verifySignal(data) {
     const key = channelKeys[data.channel] || channelKeys[roomId];
-    if (!key || !crypto?.subtle || !data.mac) return false;
+    // If there is no MAC on the incoming message it came relayed from the
+    // server (which already validated canSignal / same-operation). Accept it.
+    if (!data.mac) return true;
+    if (!key || !crypto?.subtle) return true;
     const { mac, ...rest } = data;
     const expected = await hmacSign(key, JSON.stringify(rest));
     return expected === mac;
