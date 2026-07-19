@@ -14,8 +14,48 @@ const MODES = ['SUGGEST_ONLY', 'SUGGEST_APPROVE', 'AUTO_EXECUTE'];
 
 function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 
+// --- Optional LLM layer (OpenAI-compatible, works with Kimi/Moonshot) ---
+// Set AI_PROVIDER_URL (e.g. https://api.moonshot.cn/v1/chat/completions) and
+// AI_API_KEY to enable natural-language summaries/insights. When unset, the
+// deterministic engine above is used, so the product works with ZERO keys.
+const AI_PROVIDER_URL = process.env.AI_PROVIDER_URL || '';
+const AI_API_KEY = process.env.AI_API_KEY || '';
+const AI_MODEL = process.env.AI_MODEL || 'moonshot-v1-8k';
+
+let _llmAvailable = null;
+function llmAvailable() {
+    if (_llmAvailable === null) _llmAvailable = Boolean(AI_PROVIDER_URL && AI_API_KEY);
+    return _llmAvailable;
+}
+
+async function callLLM(system, user) {
+    if (!llmAvailable()) return null;
+    try {
+        const res = await fetch(AI_PROVIDER_URL, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${AI_API_KEY}`
+            },
+            body: JSON.stringify({
+                model: AI_MODEL,
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user }
+                ],
+                temperature: 0.3
+            })
+        });
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data?.choices?.[0]?.message?.content?.trim() || null;
+    } catch {
+        return null;
+    }
+}
+
 // --- Summarize a shift from its event log ---
-function summarizeShift(events = []) {
+async function summarizeShift(events = []) {
     const counts = {};
     let sos = 0, dispatches = 0, joins = 0, locations = 0;
     for (const e of events) {
@@ -35,6 +75,14 @@ function summarizeShift(events = []) {
     text += `${dispatches} despachos, ${sos} alertas SOS. `;
     if (sos > 0) text += `Se requiere revisión post-incidente por SOS activado. `;
     if (dispatches === 0 && joins > 0) text += `Sin despachos ejecutados pese a tener unidades activas. `;
+
+    if (llmAvailable()) {
+        const llm = await callLLM(
+            "Eres el analista de operaciones de un centro de mando táctico (walkie-talkie). Redacta un resumen ejecutivo breve y profesional en español.",
+            `Eventos de la operación: ${JSON.stringify({ total, joins, locations, dispatches, sos, durationMin, counts })}`
+        );
+        if (llm) text = llm;
+    }
     return { text, metrics: { total, joins, locations, dispatches, sos, durationMin } };
 }
 

@@ -22,13 +22,13 @@ test('MODES are valid', () => {
     assert.deepStrictEqual(AI.MODES, ['SUGGEST_ONLY', 'SUGGEST_APPROVE', 'AUTO_EXECUTE']);
 });
 
-test('summarizeShift counts events', () => {
+test('summarizeShift counts events', async () => {
     const events = [
         { ts: '2026-01-01T00:00:00Z', type: 'join-operation' },
         { ts: '2026-01-01T00:01:00Z', type: 'update-location' },
         { ts: '2026-01-01T00:02:00Z', type: 'sos-triggered' },
     ];
-    const s = AI.summarizeShift(events);
+    const s = await AI.summarizeShift(events);
     assert.strictEqual(s.metrics.total, 3);
     assert.strictEqual(s.metrics.joins, 1);
     assert.strictEqual(s.metrics.sos, 1);

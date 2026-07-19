@@ -112,7 +112,7 @@ async function pushInsight(opId, { dispatchTask = null } = {}) {
         const st = opUnitState[opId] || { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
         const mode = autonomyMode[opId] || 'SUGGEST_ONLY';
 
-        const summary = AI.summarizeShift(events);
+        const summary = await AI.summarizeShift(events);
         const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents, sosActive: st.sosActive });
         let mem = null;
         try { mem = (await supabase.from('operational_memory').select('learned, summary').eq('op_id', opId).single())?.data; } catch (_) {}
@@ -844,7 +844,8 @@ setInterval(async () => {
             const mem = (await supabase.from('operational_memory').select('learned').eq('op_id', opId).single().catch(() => ({ data: null })))?.data;
             const learned = mem ? (mem.learned || {}) : {};
             const updated = AI.learnFromShift({ learned }, eventBuffers[opId] || []);
-            await supabase.from('operational_memory').upsert([{ op_id: opId, learned: updated.learned, summary: (AI.summarizeShift(eventBuffers[opId] || []).text), shift_count: (mem?.shift_count || 0) }]);
+            const shiftSummary = await AI.summarizeShift(eventBuffers[opId] || []);
+            await supabase.from('operational_memory').upsert([{ op_id: opId, learned: updated.learned, summary: shiftSummary.text, shift_count: (mem?.shift_count || 0) }]);
         } catch (e) { /* best-effort */ }
     }
 }, 15000);
