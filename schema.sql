@@ -2,10 +2,31 @@
 
 -- 1. Operations
 -- admin_password stores a bcrypt hash (never plaintext).
+-- autonomy_mode: SUGGEST_ONLY | SUGGEST_APPROVE | AUTO_EXECUTE
 CREATE TABLE IF NOT EXISTS operations (
     id TEXT PRIMARY KEY,
     admin_password TEXT NOT NULL,
+    autonomy_mode TEXT DEFAULT 'SUGGEST_ONLY',
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
+);
+
+-- 5. Event Log (operational timeline / replay)
+CREATE TABLE IF NOT EXISTS event_log (
+    id BIGSERIAL PRIMARY KEY,
+    op_id TEXT REFERENCES operations(id) ON DELETE CASCADE,
+    ts TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL,
+    type TEXT NOT NULL,
+    payload JSONB DEFAULT '{}'::jsonb
+);
+
+-- 6. Operational Memory (cross-shift learning)
+-- One row per operation storing learned patterns + running summary.
+CREATE TABLE IF NOT EXISTS operational_memory (
+    op_id TEXT PRIMARY KEY REFERENCES operations(id) ON DELETE CASCADE,
+    shift_count INTEGER DEFAULT 0,
+    learned JSONB DEFAULT '{}'::jsonb,
+    summary TEXT DEFAULT '',
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
 -- 2. Channels

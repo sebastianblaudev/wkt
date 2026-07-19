@@ -27,6 +27,34 @@
             height: 100vh;
         }
 
+        /* AI Command Center */
+        .ai-mode-btn {
+            background: rgba(255,255,255,0.06);
+            border: 1px solid rgba(80,227,194,0.3);
+            color: #9fe;
+            border-radius: 6px;
+            padding: 6px 10px;
+            font-size: 10px;
+            font-weight: 700;
+            cursor: pointer;
+            letter-spacing: 1px;
+        }
+        .ai-mode-btn.active { background: #50E3C2; color: #000; border-color: #50E3C2; }
+        .ai-action-card {
+            background: rgba(255,255,255,0.04);
+            border-left: 3px solid #50E3C2;
+            border-radius: 4px;
+            padding: 8px 10px;
+            font-size: 11px;
+            color: #cfe;
+        }
+        .ai-action-card.CRITICAL { border-left-color: #ff4d4f; }
+        .ai-action-card.HIGH { border-left-color: #ffa940; }
+        .ai-action-card button {
+            margin-top: 6px; background: #50E3C2; color: #000; border: none;
+            border-radius: 4px; padding: 4px 10px; font-size: 10px; cursor: pointer; font-weight: 700;
+        }
+
         /* Login Screen */
         .login-screen {
             position: fixed;
@@ -444,6 +472,22 @@
                     WAITING FOR SIGNALS...
                 </div>
             </div>
+
+            <!-- AI Command Center -->
+            <div style="font-size:11px; font-weight:700; color:#50E3C2; letter-spacing:2px; margin: 20px 0 8px;">AI COMMAND CENTER</div>
+            <div id="ai-mode-controls" style="display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap;">
+                <button class="ai-mode-btn" data-mode="SUGGEST_ONLY">SUGERIR</button>
+                <button class="ai-mode-btn" data-mode="SUGGEST_APPROVE">APROBAR</button>
+                <button class="ai-mode-btn" data-mode="AUTO_EXECUTE">AUTO</button>
+            </div>
+            <div id="ai-mode-current" style="font-size:11px; color:#888; margin-bottom:10px;">Modo: <b id="ai-mode-val">SUGGEST_ONLY</b></div>
+            <div id="ai-summary" style="background:rgba(80,227,194,0.08); border:1px solid rgba(80,227,194,0.2); border-radius:8px; padding:10px; font-size:12px; color:#cfe; margin-bottom:10px;"></div>
+            <div style="font-size:10px; color:#888; letter-spacing:1px; margin-bottom:4px;">PROPUESTAS DE LA IA</div>
+            <div id="ai-actions" style="display:flex; flex-direction:column; gap:6px; margin-bottom:12px;"></div>
+            <div style="font-size:10px; color:#888; letter-spacing:1px; margin-bottom:4px;">PREDICCIONES (MEMORIA)</div>
+            <div id="ai-predictions" style="font-size:11px; color:#aaa; margin-bottom:12px;"></div>
+            <button id="ai-timeline-btn" class="btn-primary" style="width:100%; font-size:11px; padding:8px;">VER TIMELINE / REPLAY</button>
+            <div id="ai-timeline" style="display:none; max-height:220px; overflow-y:auto; margin-top:8px; font-size:11px; color:#bbb;"></div>
 
             <!-- Hidden inputs/data for logic compatibility -->
             <div id="display-op-id" style="display:none;"></div>

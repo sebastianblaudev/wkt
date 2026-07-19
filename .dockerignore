@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.env
+.env.*
+!.env.example
+mock_db.json
+dist
+.DS_Store
+*.log
+test
+coverage
+*.test.cjs

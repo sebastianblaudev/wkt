@@ -547,3 +547,72 @@ function getColorForUnit(name) {
     }
     return colors[Math.abs(hash) % colors.length];
 }
+
+// --- AI Command Center ---
+const aiSummaryEl = document.getElementById('ai-summary');
+const aiActionsEl = document.getElementById('ai-actions');
+const aiPredictionsEl = document.getElementById('ai-predictions');
+const aiModeVal = document.getElementById('ai-mode-val');
+const aiTimelineEl = document.getElementById('ai-timeline');
+
+function renderAiInsight(ins) {
+    if (!ins) return;
+    if (aiSummaryEl && ins.summary) aiSummaryEl.innerText = ins.summary;
+    if (aiPredictionsEl) aiPredictionsEl.innerHTML = (ins.predictions && ins.predictions.length)
+        ? ins.predictions.map(p => `• ${p}`).join('<br>') : 'Sin predicciones aún.';
+    if (aiActionsEl) {
+        aiActionsEl.innerHTML = '';
+        (ins.actions || []).forEach(a => {
+            const card = document.createElement('div');
+            card.className = `ai-action-card ${a.priority}`;
+            card.innerHTML = `<div>[${a.priority}] ${a.text}</div>`;
+            if (ins.mode === 'SUGGEST_APPROVE') {
+                const btn = document.createElement('button');
+                btn.innerText = 'APROBAR';
+                btn.onclick = () => socket.emit('approve-ai-action', { actionType: a.type, dispatch: ins.dispatch });
+                card.appendChild(btn);
+            }
+            aiActionsEl.appendChild(card);
+        });
+    }
+}
+
+socket.on('ai-insight', renderAiInsight);
+
+socket.on('autonomy-mode', (mode) => {
+    if (aiModeVal) aiModeVal.innerText = mode;
+    document.querySelectorAll('.ai-mode-btn').forEach(b => {
+        b.classList.toggle('active', b.dataset.mode === mode);
+    });
+});
+
+document.querySelectorAll('.ai-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+        socket.emit('set-autonomy-mode', { mode: btn.dataset.mode });
+    });
+});
+
+const timelineBtn = document.getElementById('ai-timeline-btn');
+if (timelineBtn) {
+    timelineBtn.addEventListener('click', () => {
+        if (aiTimelineEl.style.display === 'none') {
+            socket.emit('request-timeline');
+        } else {
+            aiTimelineEl.style.display = 'none';
+        }
+    });
+}
+
+socket.on('timeline', (data) => {
+    if (!aiTimelineEl) return;
+    aiTimelineEl.style.display = 'block';
+    if (!data.events || !data.events.length) {
+        aiTimelineEl.innerHTML = '<div style="padding:8px;color:#666;">Sin eventos en este turno.</div>';
+        return;
+    }
+    aiTimelineEl.innerHTML = data.events.slice().reverse().map(e => {
+        const t = new Date(e.ts).toLocaleTimeString();
+        return `<div style="padding:4px 0; border-bottom:1px solid rgba(255,255,255,0.05)"><b style="color:#50E3C2">${t}</b> · ${e.type}${e.payload?.callSign ? ' · ' + e.payload.callSign : ''}</div>`;
+    }).join('');
+});
+

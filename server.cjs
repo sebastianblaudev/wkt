@@ -7,6 +7,12 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const supabase = require('./db.cjs'); // Intelligent DB selector (Supabase or Mock)
+const AI = require('./ai.cjs'); // Operational AI (rules engine; LLM-ready)
+
+// Optional LLM hook: set AI_PROVIDER_URL + AI_API_KEY to call a real model
+// later. The ai.cjs interface stays the same; this is the integration seam.
+const AI_PROVIDER_URL = process.env.AI_PROVIDER_URL;
+const AI_API_KEY = process.env.AI_API_KEY;
 
 const app = express();
 const path = require('path');
@@ -76,6 +82,55 @@ function rateLimited(socket, event) {
 // to the same operation (prevents directing audio signaling at arbitrary sockets).
 const socketOpId = new Map();
 
+// --- Operational AI state (per operation, in-memory + persisted) ---
+// eventBuffers holds the current shift's events for replay/timeline + AI.
+const eventBuffers = {};            // opId -> [ {ts, type, payload} ]
+const autonomyMode = {};            // opId -> 'SUGGEST_ONLY' | 'SUGGEST_APPROVE' | 'AUTO_EXECUTE'
+const opUnitState = {};             // opId -> { units: {}, sosActive, openIncidents, lastChaos }
+
+async function logEvent(opId, type, payload = {}) {
+    if (!opId) return;
+    const entry = { ts: new Date().toISOString(), type, payload };
+    if (!eventBuffers[opId]) eventBuffers[opId] = [];
+    eventBuffers[opId].push(entry);
+    // Cap local buffer to avoid unbounded growth; DB is the source of truth.
+    if (eventBuffers[opId].length > 5000) eventBuffers[opId].shift();
+    try {
+        await supabase.from('event_log').insert([{ op_id: opId, type, payload }]);
+    } catch (e) { /* best-effort */ }
+}
+
+// Emits an AI insight to the op's admins.
+function emitInsight(opId, insight) {
+    io.to(`admin-${opId}`).emit('ai-insight', insight);
+}
+
+// Recompute and push AI insight for an operation (called on relevant events).
+async function pushInsight(opId, { dispatchTask = null } = {}) {
+    const events = eventBuffers[opId] || [];
+    const st = opUnitState[opId] || { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
+    const mode = autonomyMode[opId] || 'SUGGEST_ONLY';
+
+    const summary = AI.summarizeShift(events);
+    const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents, sosActive: st.sosActive });
+    const mem = (await supabase.from('operational_memory').select('learned, summary').eq('op_id', opId).single().catch(() => ({ data: null })))?.data;
+    const learned = mem ? AI.learnFromShift(mem, events) : { predictions: [] };
+    const dispatch = dispatchTask ? AI.recommendDispatch(Object.values(st.units), dispatchTask) : null;
+
+    const insight = AI.buildInsight({ mode, summary, actions, predictions: learned.predictions, dispatch });
+    emitInsight(opId, insight);
+
+    // AUTO_EXECUTE: act on the top critical action without waiting for approval.
+    if (mode === 'AUTO_EXECUTE' && dispatchTask && dispatch && dispatch.recommended?.length) {
+        dispatch.recommended.forEach(uid => {
+            const u = Object.values(st.units).find(x => x.id === uid);
+            if (u?.socketId) emitForceJoin(u.socketId, opId, dispatchTask.channel || 'BASE');
+        });
+        await logEvent(opId, 'dispatch-auto', { recommended: dispatch.recommended, task: dispatchTask });
+    }
+    return insight;
+}
+
 // --- TURN credentials (ephemeral, derived from a shared static auth secret) ---
 // The TURN server (coturn) is configured with TURN_SECRET. We mint short-lived
 // credentials (username = expiry timestamp) so the browser can authenticate
@@ -114,6 +169,22 @@ app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, 'gps.html')));
 app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, 'superadmin.html')));
 app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date().toISOString() }));
+
+// Timeline / Replay (read-only). Returns the persisted event log.
+app.get('/timeline/:opId', async (req, res) => {
+    const opId = req.params.opId;
+    try {
+        const { data, error } = await supabase
+            .from('event_log')
+            .select('ts, type, payload')
+            .eq('op_id', opId)
+            .order('ts', { ascending: true });
+        if (error) return res.status(200).json({ opId, events: [], error: error.message });
+        res.json({ opId, events: data || [], generatedAt: new Date().toISOString() });
+    } catch (e) {
+        res.status(200).json({ opId, events: [], error: 'Server error' });
+    }
+});
 
 const server = http.createServer(app);
 const io = new Server(server, {
@@ -220,6 +291,15 @@ io.on('connection', (socket) => {
 
                 socket.emit('admin-authenticated', { success: true, opId, channels: channelList });
                 socket.emit('active-units-list', activeUnits);
+
+                // Restore autonomy mode (default SUGGEST_ONLY) and notify admin.
+                if (!autonomyMode[opId]) {
+                    autonomyMode[opId] = op.autonomy_mode || 'SUGGEST_ONLY';
+                }
+                socket.emit('autonomy-mode', autonomyMode[opId]);
+
+                // Push an initial AI insight.
+                pushInsight(opId);
             } else {
                 socket.emit('admin-auth-error', 'Invalid credentials');
             }
@@ -238,6 +318,42 @@ io.on('connection', (socket) => {
         const { error } = await supabase.from('operation_tokens').insert([{ token, op_id: opId, expires_at }]);
         if (!error) {
             socket.emit('invite-generated', { token, opId, expires_at });
+        }
+    });
+
+    // --- AI / Autonomy controls ---
+    socket.on('set-autonomy-mode', async ({ mode }) => {
+        const opId = socket.AdminOpId;
+        if (!opId) return;
+        if (!AI.MODES.includes(mode)) return;
+        autonomyMode[opId] = mode;
+        await supabase.from('operations').update({ autonomy_mode: mode }).eq('id', opId);
+        io.to(`admin-${opId}`).emit('autonomy-mode', mode);
+        await logEvent(opId, 'autonomy-mode', { mode });
+    });
+
+    // Timeline / Replay: send the buffered events of the current shift.
+    socket.on('request-timeline', () => {
+        const opId = socket.AdminOpId;
+        if (!opId) return;
+        const events = (eventBuffers[opId] || []).slice();
+        socket.emit('timeline', {
+            opId,
+            events,
+            generatedAt: new Date().toISOString()
+        });
+    });
+
+    // Admin approval for a suggested AI action (SUGGEST_APPROVE mode).
+    socket.on('approve-ai-action', async ({ actionType, dispatch }) => {
+        const opId = socket.AdminOpId;
+        if (!opId) return;
+        if (dispatch && dispatch.recommended?.length) {
+            dispatch.recommended.forEach(uid => {
+                const u = Object.values(opUnitState[opId]?.units || {}).find(x => x.id === uid);
+                if (u?.socketId) emitForceJoin(u.socketId, opId, dispatch.channel || 'BASE');
+            });
+            await logEvent(opId, 'dispatch-approved', { recommended: dispatch.recommended, channel: dispatch.channel });
         }
     });
 
@@ -389,6 +505,13 @@ io.on('connection', (socket) => {
             socket.UserId = userId; // Track user ID
             socketOpId.set(socket.id, opId);
 
+            // Initialize per-op AI state on first join of the shift.
+            if (!opUnitState[opId]) opUnitState[opId] = { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
+            opUnitState[opId].units[userId] = { id: userId, callSign, socketId: socket.id, status: 'WAITING FOR GPS...', lat: 0, lng: 0 };
+
+            await logEvent(opId, 'join-operation', { userId, callSign });
+            pushInsight(opId);
+
             // Get Channels
             const { data: channels } = await supabase.from('channels').select('name').eq('op_id', opId);
 
@@ -517,9 +640,15 @@ io.on('connection', (socket) => {
 
             // Update DB
             await supabase.from('units').update(updateData).eq('id', data.id);
+            if (opUnitState[opId]?.units[data.id]) {
+                opUnitState[opId].units[data.id].status = 'ACTIVE';
+                opUnitState[opId].units[data.id].lat = data.lat;
+                opUnitState[opId].units[data.id].lng = data.lng;
+            }
 
             // Propagate to Admin
             io.to(`admin-${opId}`).emit('update-location', { ...data, socketId: socket.id, status: "ACTIVE" });
+            await logEvent(opId, 'update-location', { userId: data.id, lat: data.lat, lng: data.lng });
         } catch (e) {
             console.error("Update Location Error:", e);
         }
@@ -535,6 +664,7 @@ io.on('connection', (socket) => {
         await supabase.from('channels').insert([{ op_id: opId, name: sosTicket }]);
 
         notifyChannelsUpdated(opId);
+        if (opUnitState[opId]) opUnitState[opId].sosActive += 1;
 
         emitForceJoin(socket.id, opId, sosTicket);
 
@@ -544,6 +674,9 @@ io.on('connection', (socket) => {
             lat,
             lng
         });
+
+        await logEvent(opId, 'sos-triggered', { userId: socket.UserId, channelName: sosTicket, lat, lng });
+        pushInsight(opId, { dispatchTask: { channel: sosTicket, lat, lng, count: 1 } });
     });
 
     // --- WebRTC ---
@@ -680,9 +813,25 @@ setInterval(() => {
         else if (index >= 50) state = "ALTO";
         else if (index >= 25) state = "MEDIO";
 
+        if (opUnitState[opId]) opUnitState[opId].lastChaos = { index, state };
+
         io.to(`admin-${opId}`).emit('chaos-index-updated', { index, state });
     });
 }, 3000);
+
+// Periodic AI supervisor push (every 15s) so admins always see fresh insights
+// even without discrete events. Also persists learned memory periodically.
+setInterval(async () => {
+    for (const opId of Object.keys(eventBuffers)) {
+        try {
+            await pushInsight(opId);
+            const mem = (await supabase.from('operational_memory').select('learned').eq('op_id', opId).single().catch(() => ({ data: null })))?.data;
+            const learned = mem ? (mem.learned || {}) : {};
+            const updated = AI.learnFromShift({ learned }, eventBuffers[opId] || []);
+            await supabase.from('operational_memory').upsert([{ op_id: opId, learned: updated.learned, summary: (AI.summarizeShift(eventBuffers[opId] || []).text), shift_count: (mem?.shift_count || 0) }]);
+        } catch (e) { /* best-effort */ }
+    }
+}, 15000);
 
 if (require.main === module) {
     const PORT = process.env.PORT || 3000;

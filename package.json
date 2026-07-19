@@ -11,7 +11,8 @@
     "test": "SUPER_ADMIN_KEY=test-master-key vitest run",
     "test:watch": "SUPER_ADMIN_KEY=test-master-key vitest",
     "db:apply": "node scripts/apply-schema.mjs",
-    "setup": "node scripts/setup-prod.mjs"
+    "setup": "node scripts/setup-prod.mjs",
+    "test": "node test/ai.test.cjs && node test/server.test.cjs"
   },
   "dependencies": {
     "@capacitor/android": "^5.0.0",
