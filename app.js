@@ -91,6 +91,17 @@ document.addEventListener('touchstart', () => {
     if (!isPoweredOn) autoInit();
 }, { once: true });
 
+// Mobile autoplay policy: resume AudioContext and (re)play any remote audio on
+// any user interaction, so incoming audio is never stuck "blocked".
+function resumeAudioOnGesture() {
+    if (audioContext && audioContext.state === 'suspended') audioContext.resume().catch(() => {});
+    document.querySelectorAll('audio[id^="audio-"]').forEach(el => {
+        if (el.srcObject) el.play().catch(() => {});
+    });
+}
+document.addEventListener('touchstart', resumeAudioOnGesture, { passive: true });
+document.addEventListener('click', resumeAudioOnGesture);
+
 function generateUUID() {
     return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
         var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
@@ -974,7 +985,7 @@ function createPeerConnection(targetId) {
         const stream = event.streams[0];
         updateDebug(`Track Received from ${targetId}`);
         console.log(`[WebRTC] Track matched: ${stream.id}`);
-        
+
         let remoteAudio = document.getElementById(`audio-${targetId}`);
         if (!remoteAudio) {
             remoteAudio = new Audio();
@@ -984,44 +995,41 @@ function createPeerConnection(targetId) {
             remoteAudio.style.display = 'none';
             document.body.appendChild(remoteAudio);
         }
-        
+
+        // Play directly through the <audio> element (most reliable on mobile).
         remoteAudio.srcObject = stream;
         remoteAudio.volume = 1.0;
-        
-        // Ensure play happens after user interaction handling
+
         const playRemote = () => {
             remoteAudio.play().catch(e => {
                 console.warn("Playback blocked, waiting for interaction", e);
                 updateDebug("TAP SCREEN TO HEAR AUDIO");
-                statusText.innerText = "AUDIO BLOCKED";
+                statusText.innerText = "AUDIO BLOCKED - TAP";
                 statusText.classList.add('error-blink');
             });
         };
-
         playRemote();
 
+        // Visualizer only: feed the stream into an analyser. Do NOT connect to
+        // audioContext.destination — that double-routes and can mute output on
+        // mobile when the AudioContext is suspended by autoplay policy.
         if (audioContext) {
-            audioContext.resume().then(() => {
-                try {
-                    if (!remoteAudio.connectedToContext) {
-                        const source = audioContext.createMediaStreamSource(stream);
-                        remoteAnalyser = audioContext.createAnalyser();
-                        remoteAnalyser.fftSize = 64;
-                        remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
-                        
-                        source.connect(remoteAnalyser);
-                        // CRITICAL: Connect to destination so it actually sounds through the graph
-                        source.connect(audioContext.destination);
-                        
-                        remoteAudio.connectedToContext = true;
-                        updateDebug("Audio Graph: CONNECTED");
-                        statusText.classList.remove('error-blink');
-                        if (statusText.innerText === "AUDIO BLOCKED") statusText.innerText = "ONLINE";
-                    }
-                } catch (e) {
-                    updateDebug("Bridge Error: " + e.message);
+            audioContext.resume().catch(() => {});
+            try {
+                if (!remoteAudio.connectedToContext) {
+                    const source = audioContext.createMediaStreamSource(stream);
+                    remoteAnalyser = audioContext.createAnalyser();
+                    remoteAnalyser.fftSize = 64;
+                    remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
+                    source.connect(remoteAnalyser);
+                    remoteAudio.connectedToContext = true;
+                    updateDebug("Audio Graph: VISUALIZER OK");
+                    statusText.classList.remove('error-blink');
+                    if (statusText.innerText.startsWith("AUDIO BLOCKED")) statusText.innerText = "ONLINE";
                 }
-            });
+            } catch (e) {
+                updateDebug("Bridge Error: " + e.message);
+            }
         }
     };
 
