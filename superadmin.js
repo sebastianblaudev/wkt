@@ -103,7 +103,7 @@ createOpBtn.addEventListener('click', () => {
 socket.on('tenant-created', ({ success, msg, opId, token }) => {
     if (success) {
         const inviteUrl = `${window.location.origin}/?op=${opId}&token=${token}`;
-        const deepLink = `walkietalkie://invite?op=${opId}&token=${token}`;
+        const deepLink = `${window.location.origin}/invite?op=${opId}&token=${token}`;
         
         createMsg.innerHTML = `
             <div style="background: rgba(80, 227, 194, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #50E3C2; margin-top: 15px;">

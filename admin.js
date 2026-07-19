@@ -141,7 +141,7 @@ inviteBtn.addEventListener('click', () => {
 
 socket.on('invite-generated', ({ token, opId }) => {
     const url = `${window.location.origin}/?op=${opId}&token=${token}`;
-    const deeplink = `walkietalkie://invite?op=${opId}&token=${token}`;
+    const deeplink = `${window.location.origin}/invite?op=${opId}&token=${token}`;
     navigator.clipboard.writeText(deeplink).then(() => {
         const originalText = inviteBtn.innerText;
         inviteBtn.innerText = "COPIED TO CLIPBOARD!";

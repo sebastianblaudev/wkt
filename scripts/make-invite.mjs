@@ -20,7 +20,7 @@ socket.on('tenant-created', ({ success, msg, opId, token }) => {
     console.log('\n=== OPERATION CREATED ===');
     console.log('Operation ID :', opId);
     console.log('Admin Pass   :', PASS);
-    console.log('APK deep link:', `walkietalkie://invite?op=${opId}&token=${token}`);
+    console.log('APK deep link:', `${URL}/invite?op=${opId}&token=${token}`);
     console.log('Web link     :', `${URL}/?op=${opId}&token=${token}`);
     socket.close();
     process.exit(0);

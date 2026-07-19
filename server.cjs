@@ -186,6 +186,30 @@ app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, 'superadm
 app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date().toISOString() }));
 
+// Invite bridge: a normal HTTPS link that, when opened on a phone, launches the
+// installed APK via its deep link (walkietalkie://invite?...). Browsers only fire
+// custom schemes when triggered from a page, not from the address bar, so this
+// page does the launch. If the app is not installed it falls back to the web app.
+app.get('/invite', (req, res) => {
+    const { op, token } = req.query;
+    const webUrl = `/?op=${encodeURIComponent(op || '')}&token=${encodeURIComponent(token || '')}`;
+    const deepLink = `walkietalkie://invite?op=${encodeURIComponent(op || '')}&token=${encodeURIComponent(token || '')}`;
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Unirse a la operación</title>
+<style>body{background:#0b0b0c;color:#fff;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px}button{background:#50E3C2;color:#000;border:none;border-radius:8px;padding:14px 20px;font-size:16px;font-weight:600;margin:8px;cursor:pointer}a{color:#50E3C2}</style>
+</head><body>
+<h2 style="color:#50E3C2">TOLKI Walkie Talkie</h2>
+<p>Uniéndote a la operación <b>${op || ''}</b>…</p>
+<button onclick="location.href='${deepLink}'">ABRIR APP</button>
+<p style="font-size:13px;color:#888">Si la app no está instalada, <a href="${webUrl}">únete desde el navegador</a>.</p>
+<script>
+  // Try to launch the APK automatically (works when triggered from a page).
+  setTimeout(function(){ location.href = '${deepLink}'; }, 600);
+</script>
+</body></html>`);
+});
+
 // Timeline / Replay (read-only). Returns the persisted event log.
 app.get('/timeline/:opId', async (req, res) => {
     const opId = req.params.opId;
