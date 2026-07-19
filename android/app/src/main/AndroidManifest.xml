@@ -26,7 +26,15 @@
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data android:scheme="https" android:host="walkie-talkie-server-fix.onrender.com" />
+                <data android:scheme="https" android:host="wkt.ash-2.instapods.app" />
+            </intent-filter>
+
+            <!-- Custom scheme deep link: walkietalkie://invite?op=XXX&token=YYY -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="walkietalkie" android:host="invite" />
             </intent-filter>
 
         </activity>

@@ -103,20 +103,22 @@ createOpBtn.addEventListener('click', () => {
 socket.on('tenant-created', ({ success, msg, opId, token }) => {
     if (success) {
         const inviteUrl = `${window.location.origin}/?op=${opId}&token=${token}`;
+        const deepLink = `walkietalkie://invite?op=${opId}&token=${token}`;
         
         createMsg.innerHTML = `
             <div style="background: rgba(80, 227, 194, 0.1); padding: 15px; border-radius: 8px; border: 1px solid #50E3C2; margin-top: 15px;">
                 <p style="color: #50E3C2; margin: 0 0 10px 0; font-weight: 600;">Operation '${opId}' Created!</p>
                 <p style="font-size: 12px; color: #aaa; margin-bottom: 8px;">Share this link with operators:</p>
                 <div style="display: flex; gap: 8px;">
-                    <input type="text" value="${inviteUrl}" readonly style="flex: 1; font-size: 11px; padding: 8px; background: #000; border: 1px solid #333;">
-                    <button id="copy-invite-btn" style="width: auto; padding: 0 15px; font-size: 12px; height: 34px;">COPY</button>
+                    <input type="text" value="${deepLink}" readonly style="flex: 1; font-size: 11px; padding: 8px; background: #000; border: 1px solid #333;">
+                    <button id="copy-invite-btn" style="width: auto; padding: 0 15px; font-size: 12px; height: 34px;">COPY APP</button>
                 </div>
+                <p style="font-size: 11px; color: #777; margin: 6px 0 0 0;">Web: ${inviteUrl}</p>
             </div>
         `;
         
         document.getElementById('copy-invite-btn').addEventListener('click', () => {
-            navigator.clipboard.writeText(inviteUrl).then(() => {
+            navigator.clipboard.writeText(deepLink).then(() => {
                 const btn = document.getElementById('copy-invite-btn');
                 btn.innerText = "COPIED!";
                 btn.style.background = "#fff";

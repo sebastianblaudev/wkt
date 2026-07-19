@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
     <title>SUPER ADMIN | WALKIE TALKIE</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -114,7 +114,23 @@
             font-size: 12px;
             font-weight: 600;
         }
+
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            body {
+                padding: 12px;
+                padding-top: env(safe-area-inset-top, 12px);
+                padding-bottom: env(safe-area-inset-bottom, 12px);
+            }
+            .container { max-width: 100%; }
+            h1 { font-size: 22px; margin-bottom: 24px; }
+            .card { padding: 18px; }
+            input { padding: 14px; font-size: 16px; }
+            button { padding: 14px; font-size: 15px; }
+            .op-item { flex-direction: column; align-items: flex-start; gap: 6px; }
+        }
     </style>
+
 </head>
 
 <body>

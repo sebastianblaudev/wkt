@@ -3,7 +3,7 @@
 
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, viewport-fit=cover">
     <title>S.W.A.T. ADMIN PORTAL</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -391,7 +391,93 @@
             font-family: 'Inter', sans-serif !important;
             background: transparent !important;
         }
+
+        /* --- Mobile responsive (phones) --- */
+        @media (max-width: 768px) {
+            body {
+                height: auto;
+                min-height: 100vh;
+                overflow: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .dashboard-container {
+                flex-direction: column;
+                height: auto;
+                min-height: 100vh;
+                padding: 12px;
+                gap: 12px;
+            }
+
+            /* Sidebar becomes a top horizontal bar */
+            .nav-sidebar {
+                width: 100%;
+                flex-direction: row;
+                justify-content: space-around;
+                gap: 8px;
+                padding: 8px 0;
+                background: #0b0b0c;
+                border-radius: 12px;
+            }
+
+            .nav-sidebar > div[style*="margin-top: auto"] {
+                margin-top: 0 !important;
+                padding-bottom: 0 !important;
+            }
+
+            .admin-main {
+                border-radius: 14px;
+            }
+
+            .top-header {
+                padding: 14px 16px;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 8px;
+            }
+
+            .header-stats {
+                display: flex;
+                flex-wrap: wrap;
+                gap: 6px;
+                font-size: 11px;
+            }
+
+            .map-container {
+                padding: 10px;
+                height: 50vh;
+                min-height: 280px;
+            }
+
+            #admin-map {
+                height: 100%;
+            }
+
+            .right-panel {
+                width: 100%;
+                padding-top: 0;
+            }
+
+            .login-box {
+                width: calc(100% - 40px);
+                max-width: 340px;
+                padding: 28px 20px;
+            }
+
+            /* Larger touch targets */
+            .ai-mode-btn { padding: 10px 12px; font-size: 11px; }
+            .btn-primary { padding: 14px; font-size: 15px; }
+            .login-input { padding: 14px; font-size: 16px; }
+            .channel-item { padding: 14px; font-size: 14px; }
+            .unit-item { padding: 16px; }
+        }
+
+        /* Prevent iOS double-tap zoom and respect safe areas */
+        @media (max-width: 768px) {
+            meta-viewport { }
+        }
     </style>
+
 </head>
 
 <body>
