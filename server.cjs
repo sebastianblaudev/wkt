@@ -143,17 +143,28 @@ async function pushInsight(opId, { dispatchTask = null } = {}) {
 const TURN_SECRET = process.env.TURN_SECRET;
 const TURN_URLS = (process.env.TURN_URLS || 'turn:localhost:3478?transport=udp,turn:localhost:3478?transport=tcp')
     .split(',').map(s => s.trim()).filter(Boolean);
+// Static TURN (e.g. freeTURN / provider with fixed creds) used when no
+// TURN_SECRET is set. Pushed to clients so no frontend build is required.
+const TURN_STATIC_URLS = (process.env.TURN_STATIC_URLS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+const TURN_STATIC_USER = process.env.TURN_STATIC_USER || '';
+const TURN_STATIC_PASS = process.env.TURN_STATIC_PASS || '';
 const TURN_TTL_SECONDS = 86400; // 24h credential lifetime
 
 function getTurnConfig() {
-    if (!TURN_SECRET) return null;
-    const expiry = Math.floor(Date.now() / 1000) + TURN_TTL_SECONDS;
-    const username = String(expiry);
-    const credential = crypto
-        .createHash('sha1')
-        .update(`${username}:${TURN_SECRET}`)
-        .digest('base64');
-    return { urls: TURN_URLS, username, credential, expiresAt: expiry * 1000 };
+    if (TURN_SECRET) {
+        const expiry = Math.floor(Date.now() / 1000) + TURN_TTL_SECONDS;
+        const username = String(expiry);
+        const credential = crypto
+            .createHash('sha1')
+            .update(`${username}:${TURN_SECRET}`)
+            .digest('base64');
+        return { urls: TURN_URLS, username, credential, expiresAt: expiry * 1000 };
+    }
+    if (TURN_STATIC_URLS.length) {
+        return { urls: TURN_STATIC_URLS, username: TURN_STATIC_USER, credential: TURN_STATIC_PASS };
+    }
+    return null;
 }
 
 // Emit force-join-channel including the derived signaling key for that channel.
