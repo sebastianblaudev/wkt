@@ -992,7 +992,15 @@ function createPeerConnection(targetId) {
             remoteAudio.id = `audio-${targetId}`;
             remoteAudio.autoplay = true;
             remoteAudio.playsInline = true;
-            remoteAudio.style.display = 'none';
+            // NOTE: display:none can prevent playback on some mobile browsers.
+            // Keep it in the layout but invisible/silent instead.
+            remoteAudio.style.position = 'absolute';
+            remoteAudio.style.width = '1px';
+            remoteAudio.style.height = '1px';
+            remoteAudio.style.opacity = '0';
+            remoteAudio.style.pointerEvents = 'none';
+            remoteAudio.style.left = '-10px';
+            remoteAudio.style.top = '-10px';
             document.body.appendChild(remoteAudio);
         }
 
