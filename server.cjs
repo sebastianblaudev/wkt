@@ -185,32 +185,6 @@ app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, 'gps.html')));
 app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, 'superadmin.html')));
 app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date().toISOString() }));
-app.get('/test-ai', async (req, res) => {
-    const hasUrl = Boolean(process.env.AI_PROVIDER_URL);
-    const hasKey = Boolean(process.env.AI_API_KEY);
-    const model = process.env.AI_MODEL || 'none';
-    const url = process.env.AI_PROVIDER_URL;
-    try {
-        const isGemini = url.includes('googleapis.com');
-        const apiUrl = new URL(url);
-        if (isGemini) apiUrl.searchParams.set('key', process.env.AI_API_KEY);
-        const body = isGemini
-            ? { contents: [{ parts: [{ text: 'Di solo: hola' }] }], generationConfig: { temperature: 0.1 } }
-            : { model: process.env.AI_MODEL, messages: [{ role: 'user', content: 'Di solo: hola' }], temperature: 0.1 };
-        const r = await fetch(apiUrl.toString(), {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json', ...(!isGemini && { 'Authorization': `Bearer ${process.env.AI_API_KEY}` }) },
-            body: JSON.stringify(body)
-        });
-        const d = await r.json();
-        const response = isGemini
-            ? d?.candidates?.[0]?.content?.parts?.[0]?.text || d?.error?.message
-            : d?.choices?.[0]?.message?.content || d?.error?.message;
-        res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model, llmResponse: response || 'unknown' });
-    } catch (e) {
-        res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model, error: e.message });
-    }
-});
 
 // Invite bridge: a normal HTTPS link that, when opened on a phone, launches the
 // installed APK via its deep link (walkietalkie://invite?...). Browsers only fire
