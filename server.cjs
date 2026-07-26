@@ -185,6 +185,12 @@ app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, 'gps.html')));
 app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, 'superadmin.html')));
 app.get('/index', (req, res) => res.sendFile(path.join(__dirname, 'index.html')));
 app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date().toISOString() }));
+app.get('/test-ai', async (req, res) => {
+    const hasUrl = Boolean(process.env.AI_PROVIDER_URL);
+    const hasKey = Boolean(process.env.AI_API_KEY);
+    const model = process.env.AI_MODEL || 'none';
+    res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model });
+});
 
 // Invite bridge: a normal HTTPS link that, when opened on a phone, launches the
 // installed APK via its deep link (walkietalkie://invite?...). Browsers only fire
