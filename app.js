@@ -1,3 +1,5 @@
+const PROD_SERVER_URL = "https://wkt.ash-2.instapods.app";
+
 const getServerUrl = () => {
     // 1. Manually set override
     if (localStorage.getItem('walkieTalkieServer')) {
@@ -9,20 +11,17 @@ const getServerUrl = () => {
     const port = window.location.port;
 
     // If we are on port 3001/5173 (Vite/Dev), connect to local backend
-    if (port === '3001' || port === '5173' || hostname === 'localhost') {
-        if (hostname === 'localhost' && !port) {
-            // Likely Capacitor on Android/iOS
-            return "https://walkie-talkie-server-fix.onrender.com";
-        }
+    if (port === '3001' || port === '5173') {
         return `http://${hostname}:3000`;
     }
 
-    // 3. Fallback to production Render URL if not on a standard web domain
-    if (hostname.includes('onrender.com')) {
+    // 3. Live web domain (the deployed app). Use it directly.
+    if (hostname.includes('instapods.app') || hostname.includes('onrender.com') || hostname.includes('localhost')) {
         return window.location.origin;
     }
 
-    return "https://walkie-talkie-server-fix.onrender.com";
+    // 4. Capacitor/embebbed WebView (no real hostname): use production server.
+    return PROD_SERVER_URL;
 };
 
 const serverUrl = getServerUrl();
@@ -57,13 +56,22 @@ try {
                     tokenParam = token;
                     currentOpId = op;
 
-                    if (!isPoweredOn) {
-                        const startOverlay = document.getElementById('start-overlay');
-                        if (startOverlay) startOverlay.click();
+                    const joinViaDeepLink = () => {
+                        if (!isPoweredOn) {
+                            const startOverlay = document.getElementById('start-overlay');
+                            if (startOverlay) startOverlay.click();
+                        } else {
+                            try {
+                                socket.disconnect();
+                                socket.connect();
+                            } catch (_) {}
+                        }
+                    };
+                    // Wait until DOM + socket are ready to avoid a crash on cold start.
+                    if (document.readyState === 'complete') {
+                        setTimeout(joinViaDeepLink, 300);
                     } else {
-                        // Reconnect to join new operation
-                        socket.disconnect();
-                        socket.connect();
+                        window.addEventListener('load', () => setTimeout(joinViaDeepLink, 300));
                     }
                 }
             } catch (e) { console.error("Error parsing deep link", e); }
