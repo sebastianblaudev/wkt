@@ -31,11 +31,16 @@ function llmAvailable() {
 async function callLLM(system, user) {
     if (!llmAvailable()) return null;
     try {
-        const res = await fetch(AI_PROVIDER_URL, {
+        const url = new URL(AI_PROVIDER_URL);
+        // Gemini requires ?key= param; OpenAI-compatible providers use Bearer header.
+        const isGemini = url.hostname.includes('googleapis.com');
+        if (isGemini) url.searchParams.set('key', AI_API_KEY);
+
+        const res = await fetch(url.toString(), {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${AI_API_KEY}`
+                ...(!isGemini && { 'Authorization': `Bearer ${AI_API_KEY}` })
             },
             body: JSON.stringify({
                 model: AI_MODEL,
