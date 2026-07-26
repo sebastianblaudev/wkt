@@ -194,13 +194,19 @@ app.get('/test-ai', async (req, res) => {
         const isGemini = url.includes('googleapis.com');
         const apiUrl = new URL(url);
         if (isGemini) apiUrl.searchParams.set('key', process.env.AI_API_KEY);
+        const body = isGemini
+            ? { contents: [{ parts: [{ text: 'Di solo: hola' }] }], generationConfig: { temperature: 0.1 } }
+            : { model: process.env.AI_MODEL, messages: [{ role: 'user', content: 'Di solo: hola' }], temperature: 0.1 };
         const r = await fetch(apiUrl.toString(), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(!isGemini && { 'Authorization': `Bearer ${process.env.AI_API_KEY}` }) },
-            body: JSON.stringify({ model: process.env.AI_MODEL, messages: [{ role: 'user', content: 'Di solo: hola' }], temperature: 0.1 })
+            body: JSON.stringify(body)
         });
         const d = await r.json();
-        res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model, llmResponse: d?.candidates?.[0]?.content?.parts?.[0]?.text || d?.choices?.[0]?.message?.content || d?.error?.message || 'unknown' });
+        const response = isGemini
+            ? d?.candidates?.[0]?.content?.parts?.[0]?.text || d?.error?.message
+            : d?.choices?.[0]?.message?.content || d?.error?.message;
+        res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model, llmResponse: response || 'unknown' });
     } catch (e) {
         res.json({ AI_PROVIDER_URL: hasUrl, AI_API_KEY: hasKey, AI_MODEL: model, error: e.message });
     }
