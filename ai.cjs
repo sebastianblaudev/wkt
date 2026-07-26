@@ -20,7 +20,7 @@ function clamp(n, lo, hi) { return Math.max(lo, Math.min(hi, n)); }
 // deterministic engine above is used, so the product works with ZERO keys.
 const AI_PROVIDER_URL = process.env.AI_PROVIDER_URL || '';
 const AI_API_KEY = process.env.AI_API_KEY || '';
-const AI_MODEL = process.env.AI_MODEL || 'gemini-2.5-flash';
+const AI_MODEL = process.env.AI_MODEL || 'kimi-k2';
 
 let _llmAvailable = null;
 function llmAvailable() {
