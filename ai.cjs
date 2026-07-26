@@ -32,9 +32,25 @@ async function callLLM(system, user) {
     if (!llmAvailable()) return null;
     try {
         const url = new URL(AI_PROVIDER_URL);
-        // Gemini requires ?key= param; OpenAI-compatible providers use Bearer header.
         const isGemini = url.hostname.includes('googleapis.com');
         if (isGemini) url.searchParams.set('key', AI_API_KEY);
+
+        let body;
+        if (isGemini) {
+            body = {
+                contents: [{ parts: [{ text: `${system}\n\n${user}` }] }],
+                generationConfig: { temperature: 0.3 }
+            };
+        } else {
+            body = {
+                model: AI_MODEL,
+                messages: [
+                    { role: 'system', content: system },
+                    { role: 'user', content: user }
+                ],
+                temperature: 0.3
+            };
+        }
 
         const res = await fetch(url.toString(), {
             method: 'POST',
@@ -42,17 +58,11 @@ async function callLLM(system, user) {
                 'Content-Type': 'application/json',
                 ...(!isGemini && { 'Authorization': `Bearer ${AI_API_KEY}` })
             },
-            body: JSON.stringify({
-                model: AI_MODEL,
-                messages: [
-                    { role: 'system', content: system },
-                    { role: 'user', content: user }
-                ],
-                temperature: 0.3
-            })
+            body: JSON.stringify(body)
         });
         if (!res.ok) return null;
         const data = await res.json();
+        if (isGemini) return data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null;
         return data?.choices?.[0]?.message?.content?.trim() || null;
     } catch {
         return null;
