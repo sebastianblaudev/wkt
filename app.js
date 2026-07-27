@@ -358,8 +358,12 @@ socket.on('operation-config', (config) => {
         updateDebug("TURN configured");
     }
 
-    // Auto-join default channel if not already in one
-    if (config.defaultChannel && !roomId && isPoweredOn) {
+    // Auto-join last channel if already in this op, else default channel
+    const savedChannel = localStorage.getItem('walkie_last_channel');
+    if (savedChannel && isPoweredOn) {
+        console.log("Re-joining last channel:", savedChannel);
+        joinRoom(savedChannel);
+    } else if (config.defaultChannel && !roomId && isPoweredOn) {
         console.log("Auto-joining default channel:", config.defaultChannel);
         joinRoom(config.defaultChannel);
     }
@@ -532,6 +536,7 @@ function joinRoom(room) {
     if (isSwitchingChannels) return;
     isSwitchingChannels = true;
     roomId = room;
+    localStorage.setItem('walkie_last_channel', room);
 
     roomInput.value = roomId;
     statusText.innerText = "TUNING...";
