@@ -517,11 +517,11 @@ io.on('connection', (socket) => {
             const { data: op } = await supabase.from('operations').select('id').eq('id', opId).single();
             if (!op) return socket.emit('join-error', 'Operation not found');
 
-            // Validate the invite token: must exist, not expired, not already used.
+            // Validate the invite token: must exist and not expired. Multi-use.
             if (token) {
                 const { data: tokRow } = await supabase
                     .from('operation_tokens')
-                    .select('token, op_id, expires_at, used_at')
+                    .select('token, op_id, expires_at')
                     .eq('token', token)
                     .eq('op_id', opId)
                     .single();
@@ -530,14 +530,9 @@ io.on('connection', (socket) => {
                 if (!tokRow) {
                     return socket.emit('join-error', 'Invalid invite token');
                 }
-                if (tokRow.used_at) {
-                    return socket.emit('join-error', 'Invite token already used');
-                }
                 if (tokRow.expires_at && new Date(tokRow.expires_at).getTime() < now) {
                     return socket.emit('join-error', 'Invite token expired');
                 }
-                // Mark token as used (single-use)
-                await supabase.from('operation_tokens').update({ used_at: new Date().toISOString() }).eq('token', token);
             }
 
             socket.join(opId);
@@ -786,7 +781,7 @@ setInterval(async () => {
         await supabase
             .from('operation_tokens')
             .delete()
-            .or(`expires_at.lt.${now},used_at.not.is.null`);
+            .lt('expires_at', now);
     } catch (e) {
         // Best-effort cleanup; ignore errors (e.g. mock DB has no .or support).
     }
