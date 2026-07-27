@@ -46,56 +46,98 @@ let opIdParam = urlParams.get('op');
 let tokenParam = urlParams.get('token');
 
 // --- Capacitor Deep Linking ---
+// Store a flag so the connect handler knows to (re)emit join-operation.
+let deepLinkPending = false;
+
+function activateDeepLink(op, token) {
+    opIdParam = op;
+    tokenParam = token;
+    currentOpId = op;
+    deepLinkPending = true;
+    // Persist immediately so reconnects also pick them up.
+    localStorage.setItem('walkie_op_id', op);
+    localStorage.setItem('walkie_op_token', token);
+    console.log('[DEEPLINK] Params stored:', op, token);
+}
+
+function joinViaDeepLink() {
+    if (!opIdParam || !tokenParam) return;
+    if (!isPoweredOn) {
+        try { powerBtn.click(); } catch (e) { console.error("deep link powerBtn:", e); }
+    } else {
+        // Already on — reconnect so the connect handler re-emits join-operation.
+        try { socket.disconnect(); } catch (_) {}
+        socket.connect();
+    }
+}
+
+// Try multiple strategies to capture the deep link URL.
+// Strategy 1: Capacitor appUrlOpen event (fastest, if available).
 try {
     const { App } = window.Capacitor?.Plugins || {};
     if (App && typeof App.addListener === 'function') {
         App.addListener('appUrlOpen', (event) => {
-            console.log('App opened with URL:', event.url);
+            console.log('[DEEPLINK] appUrlOpen event:', event.url);
             try {
                 const url = new URL(event.url);
                 const op = url.searchParams.get('op');
                 const token = url.searchParams.get('token');
-
                 if (op && token) {
-                    opIdParam = op;
-                    tokenParam = token;
-                    currentOpId = op;
-
-                    const joinViaDeepLink = () => {
-                        if (!isPoweredOn) {
-                            try { powerBtn.click(); } catch (e) { console.error("deep link autoInit:", e); }
-                        } else {
-                            try {
-                                socket.disconnect();
-                                socket.connect();
-                            } catch (_) {}
-                        }
-                    };
-                    // Wait until DOM + socket are ready to avoid a crash on cold start.
+                    activateDeepLink(op, token);
                     if (document.readyState === 'complete') {
                         setTimeout(joinViaDeepLink, 300);
                     } else {
                         window.addEventListener('load', () => setTimeout(joinViaDeepLink, 300));
                     }
                 }
-            } catch (e) { console.error("Error parsing deep link", e); }
+            } catch (e) { console.error("[DEEPLINK] parse error", e); }
         });
+        console.log('[DEEPLINK] appUrlOpen listener registered');
     }
 } catch (e) {
-    console.warn("Capacitor App plugin not found, skipping deep link attach.");
+    console.warn("[DEEPLINK] Capacitor App plugin not available:", e.message);
 }
+
+// Strategy 2: Android may pass the intent URL via a global before the script runs.
+// Check once more after DOM is ready (Capacitor sometimes injects it late).
+window.addEventListener('DOMContentLoaded', () => {
+    // Capacitor injects a <script> with the launch URL — check it.
+    try {
+        const capUrl = window.Capacitor?.getAppUrl?.() || null;
+        if (capUrl && capUrl.includes('op=')) {
+            const u = new URL(capUrl);
+            const op = u.searchParams.get('op');
+            const token = u.searchParams.get('token');
+            if (op && token && !opIdParam) {
+                activateDeepLink(op, token);
+            }
+        }
+    } catch (_) {}
+});
+
+// Strategy 3: Retry connecting every 500ms for up to 5 seconds if deep link
+// params are set but the socket hasn't reconnected yet.
+let deepLinkRetryCount = 0;
+const deepLinkRetry = setInterval(() => {
+    if (!deepLinkPending || deepLinkRetryCount > 10) {
+        clearInterval(deepLinkRetry);
+        return;
+    }
+    deepLinkRetryCount++;
+    if (socket.connected) {
+        socket.disconnect();
+    }
+    socket.connect();
+}, 500);
 
 // --- Auto-Initialize Logic ---
 const autoInit = () => {
     if (isPoweredOn) return;
     console.log("System Auto-Initialization...");
-    if (!isPoweredOn) {
-        try { powerBtn.click(); } catch (e) { console.error("autoInit click error:", e); }
-    }
+    try { powerBtn.click(); } catch (e) { console.error("autoInit click error:", e); }
 };
 
 window.addEventListener('load', () => {
-    // Try auto-init after a short delay
     setTimeout(autoInit, 1000);
 });
 
@@ -294,6 +336,7 @@ socket.on('room-users', (users) => {
 socket.on('operation-config', (config) => {
     console.log("Joined Operation:", config.opId);
     currentOpId = config.opId;
+    deepLinkPending = false;
     statusText.innerText = `OP: ${config.opId.toUpperCase()}`;
     updateChannelUI(config.channels);
 
@@ -529,19 +572,20 @@ socket.on('connect', () => {
     updateDebug("Network Link: ESTABLISHED");
     console.log('Socket Connected!', socket.id);
 
-    // Attempt Join Operation if params exist, else use last persisted session
-    // (so a server wake/reconnect auto-restores the operator's channel).
     const savedOp = localStorage.getItem('walkie_op_id');
     const savedToken = localStorage.getItem('walkie_op_token');
     const joinOp = opIdParam || savedOp;
     const joinToken = tokenParam || savedToken;
     if (joinOp && joinToken) {
+        console.log('[CONNECT] Joining operation:', joinOp);
         socket.emit('join-operation', {
             opId: joinOp,
             token: joinToken,
             userId: localStorage.getItem('walkie_user_id') || generateUUID(),
             callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
         });
+    } else {
+        console.log('[CONNECT] No operation to join (opIdParam:', opIdParam, 'savedOp:', savedOp, ')');
     }
 });
 
