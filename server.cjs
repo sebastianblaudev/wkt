@@ -219,6 +219,18 @@ app.get('/invite', (req, res) => {
 </body></html>`);
 });
 
+// APK Download
+app.get('/download/apk', (req, res) => {
+    const apkPath = path.join(require('os').homedir(), 'Desktop', 'walkie-talkie-deeplink.apk');
+    if (require('fs').existsSync(apkPath)) {
+        res.setHeader('Content-Type', 'application/vnd.android.package-archive');
+        res.setHeader('Content-Disposition', 'attachment; filename="walkie-talkie.apk"');
+        require('fs').createReadStream(apkPath).pipe(res);
+    } else {
+        res.status(404).send('APK not found');
+    }
+});
+
 // Timeline / Replay (read-only). Returns the persisted event log.
 app.get('/timeline/:opId', async (req, res) => {
     const opId = req.params.opId;

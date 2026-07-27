@@ -43,7 +43,7 @@
             <div class="hero-tagline">TACTICAL COMMUNICATION SYSTEMS</div>
             <h1 class="hero-title">SECURE<br>OPERATIONS<span style="color: var(--brand-accent)">.</span></h1>
             <p class="hero-desc">The standard for elite organizations. Encrypted. Invisible. Immediate.</p>
-            <button class="cta-btn download-apk" data-apk="https://wkt.ash-2.instapods.app/Desktop/walkie-talkie.apk">DOWNLOAD APK</button>
+            <button class="cta-btn download-apk" data-apk="/download/apk">DOWNLOAD APK</button>
         </div>
     </section>
 
@@ -103,12 +103,10 @@
             const opId = document.getElementById('opId').value.trim();
             const password = document.getElementById('password').value.trim();
             if (opId && password) {
-                // This would normally hit your authentication endpoint
-                // For now, we'll simulate successful login with a delay
                 this.innerText = 'AUTHENTICATING...';
                 this.disabled = true;
                 setTimeout(() => {
-                    window.location.href = '/' + opId;
+                    window.location.href = '/admin?op=' + encodeURIComponent(opId);
                 }, 1000);
             }
         });

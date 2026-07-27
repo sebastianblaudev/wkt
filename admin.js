@@ -123,11 +123,25 @@ addChannelBtn.addEventListener('click', () => {
     newChannelInput.value = '';
 });
 
-// Remove Channel
+// Remove Channel — inline confirmation (no alert/confirm which crash Android WebView)
 window.removeChannel = (channelName) => {
-    if (confirm(`Delete channel ${channelName}?`)) {
+    const overlay = document.createElement('div');
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.7);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    overlay.innerHTML = `<div style="background:#1a1a1e;padding:24px;border-radius:12px;text-align:center;max-width:320px;">
+        <p style="color:#fff;font-size:14px;margin-bottom:16px;">Delete channel <b>${channelName}</b>?</p>
+        <div style="display:flex;gap:8px;justify-content:center;">
+            <button id="confirm-delete-yes" style="padding:10px 20px;background:#ff5e57;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">DELETE</button>
+            <button id="confirm-delete-no" style="padding:10px 20px;background:#3a3a3e;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px;">CANCEL</button>
+        </div>
+    </div>`;
+    document.body.appendChild(overlay);
+    document.getElementById('confirm-delete-yes').addEventListener('click', () => {
         socket.emit('remove-channel', { channelName });
-    }
+        document.body.removeChild(overlay);
+    });
+    document.getElementById('confirm-delete-no').addEventListener('click', () => {
+        document.body.removeChild(overlay);
+    });
 };
 
 socket.on('channels-updated', (channels) => {
