@@ -63,8 +63,7 @@ try {
 
                     const joinViaDeepLink = () => {
                         if (!isPoweredOn) {
-                            const startOverlay = document.getElementById('start-overlay');
-                            if (startOverlay) startOverlay.click();
+                            try { powerBtn.click(); } catch (e) { console.error("deep link autoInit:", e); }
                         } else {
                             try {
                                 socket.disconnect();
@@ -809,14 +808,6 @@ powerBtn.addEventListener('click', async () => {
             joinBtn.disabled = false;
 
             // Trigger auto-join if we already received config but weren't powered on
-            const firstChannel = document.querySelector('.channel-item')?.getAttribute('data-channel');
-            if (!roomId && firstChannel) { // Fallback if we don't have the config handy but UI rendered
-                const chItems = document.querySelectorAll('.channel-item');
-                let targetCh = firstChannel;
-                chItems.forEach(i => { if (i.getAttribute('data-channel') === 'BASE') targetCh = 'BASE'; });
-                joinRoom(targetCh);
-            }
-            updateOverlayState();
         } catch (err) {
             console.error("Error accessing microphone:", err);
             statusText.innerText = "MIC ERROR";
@@ -1246,20 +1237,6 @@ if (disconnectBtn) {
         }
     });
 }
-
-// --- Start Overlay Logic (Auto-hide if power on succeeds) ---
-const startOverlay = document.getElementById('start-overlay');
-
-function updateOverlayState() {
-    if (isPoweredOn && startOverlay) {
-        startOverlay.style.opacity = '0';
-        setTimeout(() => startOverlay.remove(), 500);
-    }
-}
-
-// Watch for power state to hide overlay automatically
-const originalPowerOn = powerBtn.onclick; // We don't use onclick, we use listeners. 
-// Instead, let's just check in an interval or trigger from the click listener itself.
 
 // --- Hidden Server Config ---
 const serverConfigBtn = document.getElementById('server-config-btn');
