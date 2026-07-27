@@ -22,10 +22,19 @@ const path = require('path');
 // When unset (local/dev) it falls back to reflecting the request origin.
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '')
     .split(',').map(s => s.trim()).filter(Boolean);
-const corsOptions = allowedOrigins.length
-    ? { origin: allowedOrigins, methods: ['GET', 'POST'], credentials: true }
-    : { origin: true, methods: ['GET', 'POST'] };
-app.use(cors(corsOptions));
+app.use(cors({
+    origin: function(origin, callback) {
+        // Allow requests with no origin (mobile apps, Capacitor, curl, etc.)
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.length === 0) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        // Also allow Capacitor origins
+        if (origin.startsWith('capacitor://') || origin === 'https://localhost') return callback(null, true);
+        callback(null, false);
+    },
+    methods: ['GET', 'POST'],
+    credentials: true
+}));
 
 // --- Security helpers ---
 const BCRYPT_ROUNDS = 12;
@@ -228,9 +237,11 @@ app.get('/timeline/:opId', async (req, res) => {
 
 const server = http.createServer(app);
 const io = new Server(server, {
-    cors: allowedOrigins.length
-        ? { origin: allowedOrigins, methods: ["GET", "POST"], credentials: true }
-        : { origin: true, methods: ["GET", "POST"] }
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    },
+    transports: ['websocket', 'polling']
 });
 
 io.on('connection', (socket) => {
