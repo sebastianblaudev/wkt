@@ -6,7 +6,12 @@ const getServerUrl = () => {
         return localStorage.getItem('walkieTalkieServer');
     }
 
-    // 2. Network/Local Development
+    // 2. Capacitor/embebbed WebView: always use production server.
+    if (window.Capacitor) {
+        return PROD_SERVER_URL;
+    }
+
+    // 3. Network/Local Development
     const hostname = window.location.hostname;
     const port = window.location.port;
 
@@ -15,12 +20,12 @@ const getServerUrl = () => {
         return `http://${hostname}:3000`;
     }
 
-    // 3. Live web domain (the deployed app). Use it directly.
-    if (hostname.includes('instapods.app') || hostname.includes('onrender.com') || hostname.includes('localhost')) {
+    // 4. Live web domain (the deployed app). Use it directly.
+    if (hostname.includes('instapods.app') || hostname.includes('onrender.com')) {
         return window.location.origin;
     }
 
-    // 4. Capacitor/embebbed WebView (no real hostname): use production server.
+    // 5. Fallback
     return PROD_SERVER_URL;
 };
 
@@ -85,7 +90,7 @@ try {
 const autoInit = () => {
     console.log("System Auto-Initialization...");
     if (!isPoweredOn) {
-        powerBtn.click();
+        try { powerBtn.click(); } catch (e) { console.error("autoInit click error:", e); }
     }
 };
 
@@ -575,7 +580,7 @@ function startGpsTracking() {
             timeout: 10000
         });
     } else {
-        alert("Geolocation not supported.");
+        console.warn("Geolocation not supported.");
     }
 }
 
@@ -742,6 +747,7 @@ setInterval(() => {
 }, 5000);
 
 powerBtn.addEventListener('click', async () => {
+    try {
     isPoweredOn = !isPoweredOn;
     if (isPoweredOn) {
         statusText.innerText = "INITIALIZING...";
@@ -750,6 +756,9 @@ powerBtn.addEventListener('click', async () => {
         await requestWakeLock();
 
         try {
+            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+                throw new Error("getUserMedia not supported");
+            }
             const rawStream = await navigator.mediaDevices.getUserMedia({
                 audio: {
                     echoCancellation: true,
@@ -759,8 +768,10 @@ powerBtn.addEventListener('click', async () => {
                 video: false
             });
 
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) throw new Error("AudioContext not supported");
             if (!audioContext) {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                audioContext = new AudioCtx();
             } else if (audioContext.state === 'suspended') {
                 audioContext.resume();
             }
@@ -809,12 +820,12 @@ powerBtn.addEventListener('click', async () => {
         } catch (err) {
             console.error("Error accessing microphone:", err);
             statusText.innerText = "MIC ERROR";
-            alert("Microphone access required!");
             forcePowerOff();
         }
     } else {
         forcePowerOff();
     }
+    } catch (e) { console.error("Power button error:", e); isPoweredOn = false; statusText.innerText = "ERROR"; }
 });
 
 // --- PTT Logic ---
