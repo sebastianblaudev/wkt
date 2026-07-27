@@ -906,6 +906,14 @@ window.addEventListener('mouseup', stopTx);
 talkBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTx(); });
 talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTx(); });
 
+// --- Manual SOS Button (Android WebView fallback — devicemotion may not fire) ---
+const sosBtn = document.getElementById('sos-btn');
+if (sosBtn) {
+    sosBtn.addEventListener('click', () => {
+        if (!isPoweredOn) return;
+        triggerManDown();
+    });
+}
 
 // --- Visualizer Logic ---
 let isReceiving = false;
