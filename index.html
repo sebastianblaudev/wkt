@@ -88,8 +88,8 @@
                 <div class="gps-header">
                     <h2>OPERATIONAL OVERWATCH</h2>
                     <div class="gps-stats">
-                        <span>UNITS: 12</span>
-                        <span>ACTIVE: 08</span>
+                        <span>UNITS: <span id="gps-unit-count">0</span></span>
+                        <span>ACTIVE: <span id="gps-active-count">0</span></span>
                     </div>
                 </div>
 
@@ -97,10 +97,7 @@
                     <!-- Grid View (Space restricted) -->
                     <div id="gps-grid-view" class="view-mode active">
                         <div class="grid-background"></div>
-                        <!-- Dots will be injected here via JS -->
-                        <div class="unit-dot" style="top: 40%; left: 30%;"></div>
-                        <div class="unit-dot" style="top: 60%; left: 60%;"></div>
-                        <div class="unit-dot pulse" style="top: 30%; left: 70%;"></div>
+                        <!-- Dots injected dynamically via JS -->
                     </div>
 
                     <!-- Real Map View -->
@@ -108,28 +105,8 @@
                 </div>
             </div>
 
-            <div class="gps-unit-list">
-                <div class="unit-card status-ok">
-                    <div class="dot"></div>
-                    <div class="info">
-                        <span class="u-name">ALPHA-1</span>
-                        <span class="u-status">STANDING BY</span>
-                    </div>
-                </div>
-                <div class="unit-card status-busy">
-                    <div class="dot"></div>
-                    <div class="info">
-                        <span class="u-name">BRAVO-4</span>
-                        <span class="u-status">EN ROUTE</span>
-                    </div>
-                </div>
-                <div class="unit-card status-warn">
-                    <div class="dot"></div>
-                    <div class="info">
-                        <span class="u-name">DELTA-2</span>
-                        <span class="u-status">LOW SIGNAL</span>
-                    </div>
-                </div>
+            <div class="gps-unit-list" id="gps-unit-list">
+                <!-- Unit cards injected dynamically via JS -->
             </div>
         </div>
 
@@ -146,7 +123,7 @@
                     </div>
                     <div class="profile-details">
                         <span class="label">CALL SIGN</span>
-                        <h2 id="profile-callsign">ALPHA-01</h2>
+                        <h2 id="profile-callsign">---</h2>
                         <span class="label">UNIT ID</span>
                         <h3 id="profile-id">--</h3>
                     </div>
