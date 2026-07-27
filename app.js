@@ -745,78 +745,76 @@ setInterval(() => {
     if (isPoweredOn && roomId) updateMediaSession();
 }, 5000);
 
+// --- Power Button Handler (capacitor-safe with error handling) ---
 powerBtn.addEventListener('click', async () => {
     try {
     isPoweredOn = !isPoweredOn;
-    if (isPoweredOn) {
-        statusText.innerText = "INITIALIZING...";
-        if (!socket.connected) socket.connect();
-        startGpsTracking();
-        await requestWakeLock();
-
-        try {
-            if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-                throw new Error("getUserMedia not supported");
-            }
-            const rawStream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    echoCancellation: true,
-                    noiseSuppression: true,
-                    autoGainControl: true
-                },
-                video: false
-            });
-
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (!AudioCtx) throw new Error("AudioContext not supported");
-            if (!audioContext) {
-                audioContext = new AudioCtx();
-            } else if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            micSource = audioContext.createMediaStreamSource(rawStream);
-            analyser = audioContext.createAnalyser();
-
-            micSource.connect(analyser);
-
-            localStream = rawStream;
-            localStream.getAudioTracks().forEach(t => t.enabled = false);
-
-            // --- Track Injection into existing peers ---
-            Object.keys(peers).forEach(targetId => {
-                const pc = peers[targetId];
-                if (pc && pc.signalingState !== 'closed') {
-                    localStream.getTracks().forEach(track => {
-                        // Avoid adding twice
-                        const senders = pc.getSenders();
-                        const exists = senders.some(s => s.track && s.track.kind === track.kind);
-                        if (!exists) {
-                            pc.addTrack(track, localStream);
-                        }
-                    });
-                    // Renegotiate
-                    createOffer(targetId);
-                }
-            });
-
-            analyser.fftSize = 64;
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-
-            drawVisualizer();
-            statusText.innerText = "STANDBY";
-            joinBtn.disabled = false;
-
-            // Trigger auto-join if we already received config but weren't powered on
-        } catch (err) {
-            console.error("Error accessing microphone:", err);
-            statusText.innerText = "MIC ERROR";
-            forcePowerOff();
-        }
-    } else {
+    if (!isPoweredOn) {
         forcePowerOff();
+        return;
     }
-    } catch (e) { console.error("Power button error:", e); isPoweredOn = false; statusText.innerText = "ERROR"; }
+
+    statusText.innerText = "INITIALIZING...";
+    if (!socket.connected) socket.connect();
+    startGpsTracking();
+    await requestWakeLock();
+
+    const rawStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        },
+        video: false
+    });
+
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) throw new Error("AudioContext not supported");
+    if (!audioContext) {
+        audioContext = new AudioCtx();
+    } else if (audioContext.state === 'suspended') {
+        audioContext.resume();
+    }
+    micSource = audioContext.createMediaStreamSource(rawStream);
+    analyser = audioContext.createAnalyser();
+    micSource.connect(analyser);
+
+    localStream = rawStream;
+    localStream.getAudioTracks().forEach(t => t.enabled = false);
+
+    // --- Track Injection into existing peers ---
+    Object.keys(peers).forEach(targetId => {
+        const pc = peers[targetId];
+        if (pc && pc.signalingState !== 'closed') {
+            localStream.getTracks().forEach(track => {
+                const senders = pc.getSenders();
+                const exists = senders.some(s => s.track && s.track.kind === track.kind);
+                if (!exists) pc.addTrack(track, localStream);
+            });
+            createOffer(targetId);
+        }
+    });
+
+    analyser.fftSize = 64;
+    const bufferLength = analyser.frequencyBinCount;
+    dataArray = new Uint8Array(bufferLength);
+    drawVisualizer();
+    statusText.innerText = "STANDBY";
+    joinBtn.disabled = false;
+
+    // Trigger auto-join if we already received config but weren't powered on
+    const firstChannel = document.querySelector('.channel-item')?.getAttribute('data-channel');
+    if (!roomId && firstChannel) {
+        const chItems = document.querySelectorAll('.channel-item');
+        let targetCh = firstChannel;
+        chItems.forEach(i => { if (i.getAttribute('data-channel') === 'BASE') targetCh = 'BASE'; });
+        joinRoom(targetCh);
+    }
+} catch (err) {
+    console.error("Error accessing microphone:", err);
+    statusText.innerText = "MIC ERROR";
+    // Microphone failed - don't auto-power off yet
+}
 });
 
 // --- PTT Logic ---
