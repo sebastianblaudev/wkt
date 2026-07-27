@@ -560,19 +560,20 @@ io.on('connection', (socket) => {
 
             // Get Channels
             const { data: channels } = await supabase.from('channels').select('name').eq('op_id', opId);
+            const channelList = channels || [];
 
             let defaultChannel = 'BASE';
-            if (channels && channels.length > 0) {
-                const hasBase = channels.some(c => c.name === 'BASE');
-                if (!hasBase) defaultChannel = channels[0].name;
+            if (channelList.length > 0) {
+                const hasBase = channelList.some(c => c.name === 'BASE');
+                if (!hasBase) defaultChannel = channelList[0].name;
             }
 
             socket.emit('operation-config', {
-                channels: channels.map(c => c.name),
+                channels: channelList.map(c => c.name),
                 opId,
                 defaultChannel,
                 turn: getTurnConfig(),
-                channelKeys: channels.reduce((acc, c) => {
+                channelKeys: channelList.reduce((acc, c) => {
                     acc[c.name] = deriveChannelKey(opId, c.name);
                     return acc;
                 }, {})

@@ -87,6 +87,7 @@ try {
 
 // --- Auto-Initialize Logic ---
 const autoInit = () => {
+    if (isPoweredOn) return;
     console.log("System Auto-Initialization...");
     if (!isPoweredOn) {
         try { powerBtn.click(); } catch (e) { console.error("autoInit click error:", e); }
@@ -378,8 +379,9 @@ socket.on('force-join-channel', (payload) => {
 });
 
 socket.on('join-error', (msg) => {
-    alert("ACCESS DENIED: " + msg);
+    console.error("ACCESS DENIED:", msg);
     statusText.innerText = "ACCESS DENIED";
+    statusText.classList.add('error-blink');
 });
 
 socket.on('connect_error', (err) => {
@@ -446,7 +448,7 @@ function updateChannelUI(channels) {
                     joinRoom(newChannel);
                     channelSheet.classList.remove('show');
                 } else if (!isPoweredOn) {
-                    alert("Power ON the device first!");
+                    console.warn("Power ON the device first!");
                     channelSheet.classList.remove('show');
                 }
             });
@@ -1228,10 +1230,8 @@ if (closeProfileBtn) closeProfileBtn.addEventListener('click', () => profileShee
 
 if (disconnectBtn) {
     disconnectBtn.addEventListener('click', () => {
-        if (confirm('Disconnect from secure network?')) {
-            forcePowerOff();
-            profileSheet.classList.remove('show');
-        }
+        forcePowerOff();
+        profileSheet.classList.remove('show');
     });
 }
 
@@ -1242,9 +1242,10 @@ if (serverConfigBtn) {
     serverConfigBtn.addEventListener('click', () => {
         clickCount++;
         if (clickCount >= 5) {
-            const newUrl = prompt("Enter Tactical Server URL:", serverUrl);
-            if (newUrl) {
-                localStorage.setItem('walkieTalkieServer', newUrl);
+            const newUrl = localStorage.getItem('walkieTalkieServer') || serverUrl;
+            const input = prompt("Enter Tactical Server URL:", newUrl);
+            if (input && input !== newUrl) {
+                localStorage.setItem('walkieTalkieServer', input);
                 window.location.reload();
             }
             clickCount = 0;
