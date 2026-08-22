@@ -62,10 +62,16 @@ function activateDeepLink(op, token) {
 
 function joinViaDeepLink() {
     if (!opIdParam || !tokenParam) return;
-    console.log('[DEEPLINK] joinViaDeepLink - params stored, relying on connect handler');
-    // El connect handler ya emitirá join-operation cuando el socket se conecte
-    // y tenga opIdParam || savedOp en localStorage. No hacer powerBtn.click()
-    // para evitar toggelar isPoweredOn si ya estaba encendido.
+    console.log('[DEEPLINK] joinViaDeepLink - emitting join-operation with stored params');
+    // Emite join-operation directamente ya que los params ya están en localStorage
+    // después de activateDeepLink. El server validará el token y responderá
+    // con operation-config, que hará que el client una el canal y muestre ONLINE.
+    socket.emit('join-operation', {
+        opId: opIdParam,
+        token: tokenParam,
+        userId: localStorage.getItem('walkie_user_id') || generateUUID(),
+        callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
+    });
 }
 
 // Try multiple strategies to capture the deep link URL.
