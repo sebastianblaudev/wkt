@@ -62,30 +62,10 @@ function activateDeepLink(op, token) {
 
 function joinViaDeepLink() {
     if (!opIdParam || !tokenParam) return;
-    console.log('[DEEPLINK] joinViaDeepLink:', opIdParam, tokenParam);
-    if (!isPoweredOn) {
-        try { powerBtn.click(); } catch (e) { console.error("deep link powerBtn:", e); }
-    }
-    function emitJoin() {
-        console.log('[DEEPLINK] Emitting join-operation');
-        socket.emit('join-operation', {
-            opId: opIdParam,
-            token: tokenParam,
-            userId: localStorage.getItem('walkie_user_id') || generateUUID(),
-            callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
-        });
-    }
-    // Wait until socket is connected, then emit join-operation.
-    setTimeout(() => {
-        if (socket.connected) {
-            emitJoin();
-        } else {
-            // Socket still connecting — wait for it
-            const onConnect = () => { socket.off('connect', onConnect); emitJoin(); };
-            socket.on('connect', onConnect);
-            if (!socket.connected) socket.connect();
-        }
-    }, 500);
+    console.log('[DEEPLINK] joinViaDeepLink - params stored, relying on connect handler');
+    // El connect handler ya emitirá join-operation cuando el socket se conecte
+    // y tenga opIdParam || savedOp en localStorage. No hacer powerBtn.click()
+    // para evitar toggelar isPoweredOn si ya estaba encendido.
 }
 
 // Try multiple strategies to capture the deep link URL.
