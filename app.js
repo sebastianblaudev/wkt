@@ -58,6 +58,12 @@ function activateDeepLink(op, token) {
     localStorage.setItem('walkie_op_id', op);
     localStorage.setItem('walkie_op_token', token);
     console.log('[DEEPLINK] Params stored:', op, token);
+    // Power on automatically so operation-config can auto-join a channel.
+    // Without this, isPoweredOn stays false (web flow never clicks the button)
+    // and the channel is never joined, leaving the app stuck.
+    if (!isPoweredOn) {
+        powerOn().catch(e => console.error('[DEEPLINK] powerOn error:', e));
+    }
 }
 
 function joinViaDeepLink() {
@@ -120,6 +126,17 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Strategy 3 is removed — it disconnected the socket every 500ms, killing the
 // join-operation response before it arrived. joinViaDeepLink handles retries now.
+
+// Web (non-APK) deep link: params arrive directly in the URL (?op=...&token=...).
+// If present and not yet handled by the Capacitor appUrlOpen path, activate them
+// so the device powers on and auto-joins the operation as a web app.
+window.addEventListener('DOMContentLoaded', () => {
+    if (opIdParam && tokenParam && !deepLinkPending) {
+        console.log('[WEB] Direct URL params detected, activating deep link');
+        activateDeepLink(opIdParam, tokenParam);
+        joinViaDeepLink();
+    }
+});
 
 // --- Auto-Initialize Logic ---
 const autoInit = () => {
@@ -670,70 +687,76 @@ function forcePowerOff() {
 
 
 
+// --- Power On (shared by button click and deep-link auto-join) ---
+async function powerOn() {
+    if (isPoweredOn) return;
+    isPoweredOn = true;
+
+    statusText.innerText = "INITIALIZING...";
+    if (!socket.connected) socket.connect();
+    startGpsTracking();
+    try { await requestWakeLock(); } catch (_) {}
+
+    // Try to init audio, but DON'T block or crash if it fails
+    try {
+        const rawStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false
+        });
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            if (!audioContext) {
+                audioContext = new AudioCtx();
+            } else if (audioContext.state === 'suspended') {
+                audioContext.resume();
+            }
+            micSource = audioContext.createMediaStreamSource(rawStream);
+            analyser = audioContext.createAnalyser();
+            micSource.connect(analyser);
+
+            localStream = rawStream;
+            localStream.getAudioTracks().forEach(t => t.enabled = false);
+
+            Object.keys(peers).forEach(targetId => {
+                const pc = peers[targetId];
+                if (pc && pc.signalingState !== 'closed') {
+                    localStream.getTracks().forEach(track => {
+                        const senders = pc.getSenders();
+                        const exists = senders.some(s => s.track && s.track.kind === track.kind);
+                        if (!exists) pc.addTrack(track, localStream);
+                    });
+                    createOffer(targetId);
+                }
+            });
+
+            analyser.fftSize = 64;
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+            drawVisualizer();
+        }
+    } catch (micErr) {
+        console.warn("Mic not available, continuing without audio:", micErr.message);
+    }
+
+    statusText.innerText = "STANDBY";
+    talkBtn.disabled = false;
+
+    // Auto-join default channel
+    if (!roomId) {
+        const ch = document.querySelector('.channel-item')?.getAttribute('data-channel');
+        if (ch) joinRoom(ch);
+    }
+}
+
 // --- Power Button Handler (capacitor-safe) ---
 powerBtn.addEventListener('click', async () => {
     try {
-        isPoweredOn = !isPoweredOn;
-        if (!isPoweredOn) {
+        if (isPoweredOn) {
             forcePowerOff();
             return;
         }
-
-        statusText.innerText = "INITIALIZING...";
-        if (!socket.connected) socket.connect();
-        startGpsTracking();
-        try { await requestWakeLock(); } catch (_) {}
-
-        // Try to init audio, but DON'T block or crash if it fails
-        try {
-            const rawStream = await navigator.mediaDevices.getUserMedia({
-                audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-                video: false
-            });
-
-            const AudioCtx = window.AudioContext || window.webkitAudioContext;
-            if (AudioCtx) {
-                if (!audioContext) {
-                    audioContext = new AudioCtx();
-                } else if (audioContext.state === 'suspended') {
-                    audioContext.resume();
-                }
-                micSource = audioContext.createMediaStreamSource(rawStream);
-                analyser = audioContext.createAnalyser();
-                micSource.connect(analyser);
-
-                localStream = rawStream;
-                localStream.getAudioTracks().forEach(t => t.enabled = false);
-
-                Object.keys(peers).forEach(targetId => {
-                    const pc = peers[targetId];
-                    if (pc && pc.signalingState !== 'closed') {
-                        localStream.getTracks().forEach(track => {
-                            const senders = pc.getSenders();
-                            const exists = senders.some(s => s.track && s.track.kind === track.kind);
-                            if (!exists) pc.addTrack(track, localStream);
-                        });
-                        createOffer(targetId);
-                    }
-                });
-
-                analyser.fftSize = 64;
-                const bufferLength = analyser.frequencyBinCount;
-                dataArray = new Uint8Array(bufferLength);
-                drawVisualizer();
-            }
-        } catch (micErr) {
-            console.warn("Mic not available, continuing without audio:", micErr.message);
-        }
-
-        statusText.innerText = "STANDBY";
-        talkBtn.disabled = false;
-
-        // Auto-join default channel
-        if (!roomId) {
-            const ch = document.querySelector('.channel-item')?.getAttribute('data-channel');
-            if (ch) joinRoom(ch);
-        }
+        await powerOn();
     } catch (err) {
         console.error("Power button error:", err);
         isPoweredOn = false;

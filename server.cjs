@@ -202,21 +202,10 @@ app.get('/health', (req, res) => res.json({ status: 'OK', timestamp: new Date().
 app.get('/invite', (req, res) => {
     const { op, token } = req.query;
     const webUrl = `/?op=${encodeURIComponent(op || '')}&token=${encodeURIComponent(token || '')}`;
-    const deepLink = `walkietalkie://invite?op=${encodeURIComponent(op || '')}&token=${encodeURIComponent(token || '')}`;
-    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Unirse a la operación</title>
-<style>body{background:#0b0b0c;color:#fff;font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;margin:0;text-align:center;padding:20px}button{background:#50E3C2;color:#000;border:none;border-radius:8px;padding:14px 20px;font-size:16px;font-weight:600;margin:8px;cursor:pointer}a{color:#50E3C2}</style>
-</head><body>
-<h2 style="color:#50E3C2">TOLKI Walkie Talkie</h2>
-<p>Uniéndote a la operación <b>${op || ''}</b>…</p>
-<button onclick="location.href='${deepLink}'">ABRIR APP</button>
-<p style="font-size:13px;color:#888">Si la app no está instalada, <a href="${webUrl}">únete desde el navegador</a>.</p>
-<script>
-  // Try to launch the APK automatically (works when triggered from a page).
-  setTimeout(function(){ location.href = '${deepLink}'; }, 600);
-</script>
-</body></html>`);
+    // On a browser (no Capacitor), redirect straight to the web app with the
+    // params in the URL query so it auto-joins the operation. The walkietalkie://
+    // scheme only works when the Android APK is installed and opened via intent.
+    res.redirect(302, webUrl);
 });
 
 // APK Download
