@@ -62,13 +62,25 @@ function activateDeepLink(op, token) {
 
 function joinViaDeepLink() {
     if (!opIdParam || !tokenParam) return;
+    console.log('[DEEPLINK] joinViaDeepLink:', opIdParam, tokenParam);
     if (!isPoweredOn) {
         try { powerBtn.click(); } catch (e) { console.error("deep link powerBtn:", e); }
-    } else {
-        // Already on — reconnect so the connect handler re-emits join-operation.
-        try { socket.disconnect(); } catch (_) {}
-        socket.connect();
     }
+    // If socket is already connected (auto-connected on page load), just emit
+    // join-operation directly. Disconnect/reconnect would kill the session.
+    setTimeout(() => {
+        if (socket.connected) {
+            console.log('[DEEPLINK] Socket already connected, emitting join-operation directly');
+            socket.emit('join-operation', {
+                opId: opIdParam,
+                token: tokenParam,
+                userId: localStorage.getItem('walkie_user_id') || generateUUID(),
+                callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
+            });
+        } else {
+            socket.connect();
+        }
+    }, 500);
 }
 
 // Try multiple strategies to capture the deep link URL.
@@ -166,10 +178,7 @@ function generateUUID() {
 
 // --- Global Vars ---
 // --- Debug ---
-const debugInfo = document.createElement('div');
-debugInfo.style = "position:fixed; bottom:10px; right:10px; color:#50E3C2; font-size:9px; font-family:monospace; pointer-events:none; z-index:1000; background:rgba(0,0,0,0.5); padding:5px;";
-document.body.appendChild(debugInfo);
-function updateDebug(msg) { debugInfo.innerText = msg; console.log("[DEBUG]", msg); }
+function updateDebug(msg) { console.log("[DEBUG]", msg); }
 updateDebug("Ready.");
 
 let localStream;
@@ -680,121 +689,7 @@ function forcePowerOff() {
     socket.disconnect();
 }
 
-// --- Man Down Protocol Logic ---
-// Man Down can be disabled via ?manDown=0 or a stored preference (e.g. for testing).
-const manDownEnabled = (() => {
-    const p = new URLSearchParams(window.location.search).get('manDown');
-    if (p === '0') return false;
-    if (p === '1') return true;
-    return localStorage.getItem('walkie_man_down') !== '0';
-})();
 
-let manDownTimer = null;
-let sosCountdown = 15;
-let lastMotionTime = Date.now();
-const INACTIVITY_THRESHOLD = 60000; // 60 seconds (disabled below)
-const FALL_THRESHOLD = 35; // High acceleration — real fall, not a shake
-let isSosActive = false;
-let sosCountdownInterval = null;
-let highImpactStreak = 0; // require consecutive high readings to confirm a fall
-
-const sosOverlay = document.getElementById('sos-countdown-overlay');
-const sosTimerDisplay = document.getElementById('sos-timer');
-const cancelSosBtn = document.getElementById('cancel-sos-btn');
-
-function triggerManDown() {
-    if (!manDownEnabled) return;
-    if (!isPoweredOn || isSosActive) return;
-    isSosActive = true;
-    sosCountdown = 15;
-
-    playTacticalAlert();
-
-    if (sosOverlay && sosTimerDisplay) {
-        sosTimerDisplay.innerText = `ACTIVATING SOS IN ${sosCountdown}s`;
-        sosOverlay.classList.remove('hidden');
-        sosOverlay.classList.add('show');
-    }
-
-    if (navigator.vibrate) {
-        navigator.vibrate([500, 200, 500, 200, 500]);
-    }
-
-    sosCountdownInterval = setInterval(() => {
-        sosCountdown--;
-        if (sosTimerDisplay) sosTimerDisplay.innerText = `ACTIVATING SOS IN ${sosCountdown}s`;
-
-        if (sosCountdown <= 0) {
-            clearInterval(sosCountdownInterval);
-            emitSosAlert();
-        }
-    }, 1000);
-}
-
-if (cancelSosBtn) {
-    cancelSosBtn.addEventListener('click', () => {
-        isSosActive = false;
-        clearInterval(sosCountdownInterval);
-        if (sosOverlay) {
-            sosOverlay.classList.remove('show');
-            setTimeout(() => sosOverlay.classList.add('hidden'), 300);
-        }
-        lastMotionTime = Date.now();
-    });
-}
-
-function emitSosAlert() {
-    if (sosOverlay && sosTimerDisplay) {
-        sosTimerDisplay.innerText = "SOS TRANSMITTED";
-        setTimeout(() => {
-            sosOverlay.classList.remove('show');
-            setTimeout(() => sosOverlay.classList.add('hidden'), 300);
-        }, 3000);
-    }
-
-    if ("geolocation" in navigator) {
-        navigator.geolocation.getCurrentPosition((position) => {
-            socket.emit('sos-alert', { lat: position.coords.latitude, lng: position.coords.longitude });
-        }, () => {
-            socket.emit('sos-alert', { lat: 0, lng: 0 });
-        });
-    } else {
-        socket.emit('sos-alert', { lat: 0, lng: 0 });
-    }
-}
-
-window.addEventListener('devicemotion', (e) => {
-    if (!isPoweredOn) return;
-    const acc = e.accelerationIncludingGravity;
-    if (!acc) return;
-
-    const magnitude = Math.sqrt(acc.x * acc.x + acc.y * acc.y + acc.z * acc.z);
-
-    if (magnitude > FALL_THRESHOLD) {
-        highImpactStreak++;
-        // Require 3 consecutive high-impact readings (~150ms+ of force) so a
-        // single shake / bump does not trigger a false Man Down.
-        if (highImpactStreak >= 3) {
-            console.log("Significant impact detected.");
-            triggerManDown();
-            highImpactStreak = 0;
-        }
-    } else {
-        highImpactStreak = 0;
-    }
-
-    if (Math.abs(magnitude - 9.8) > 1.0) {
-        lastMotionTime = Date.now();
-    }
-});
-
-setInterval(() => {
-    if (!isPoweredOn || isSosActive) return;
-    // Inactivity-based SOS disabled: it fired falsely when the phone was at rest.
-    // Man Down now only triggers on a real high-impact fall (see devicemotion).
-    // Periodic MediaSession refresh to keep alive
-    if (isPoweredOn && roomId) updateMediaSession();
-}, 5000);
 
 // --- Power Button Handler (capacitor-safe) ---
 powerBtn.addEventListener('click', async () => {
@@ -906,14 +801,7 @@ window.addEventListener('mouseup', stopTx);
 talkBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTx(); });
 talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTx(); });
 
-// --- Manual SOS Button (Android WebView fallback — devicemotion may not fire) ---
-const sosBtn = document.getElementById('sos-btn');
-if (sosBtn) {
-    sosBtn.addEventListener('click', () => {
-        if (!isPoweredOn) return;
-        triggerManDown();
-    });
-}
+
 
 // --- Visualizer Logic ---
 let isReceiving = false;

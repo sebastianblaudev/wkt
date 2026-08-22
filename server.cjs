@@ -95,7 +95,7 @@ const socketOpId = new Map();
 // eventBuffers holds the current shift's events for replay/timeline + AI.
 const eventBuffers = {};            // opId -> [ {ts, type, payload} ]
 const autonomyMode = {};            // opId -> 'SUGGEST_ONLY' | 'SUGGEST_APPROVE' | 'AUTO_EXECUTE'
-const opUnitState = {};             // opId -> { units: {}, sosActive, openIncidents, lastChaos }
+const opUnitState = {};             // opId -> { units: {}, openIncidents, lastChaos }
 
 async function logEvent(opId, type, payload = {}) {
     if (!opId) return;
@@ -118,11 +118,11 @@ function emitInsight(opId, insight) {
 async function pushInsight(opId, { dispatchTask = null } = {}) {
     try {
         const events = eventBuffers[opId] || [];
-        const st = opUnitState[opId] || { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
+        const st = opUnitState[opId] || { units: {}, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
         const mode = autonomyMode[opId] || 'SUGGEST_ONLY';
 
         const summary = await AI.summarizeShift(events);
-        const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents, sosActive: st.sosActive });
+        const actions = AI.supervise({ chaos: st.lastChaos, units: Object.values(st.units), openIncidents: st.openIncidents });
         let mem = null;
         try { mem = (await supabase.from('operational_memory').select('learned, summary').eq('op_id', opId).single())?.data; } catch (_) {}
         const learned = mem ? AI.learnFromShift(mem, events) : { predictions: [] };
@@ -564,7 +564,7 @@ io.on('connection', (socket) => {
             socketOpId.set(socket.id, opId);
 
             // Initialize per-op AI state on first join of the shift.
-            if (!opUnitState[opId]) opUnitState[opId] = { units: {}, sosActive: 0, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
+            if (!opUnitState[opId]) opUnitState[opId] = { units: {}, openIncidents: 0, lastChaos: { index: 0, state: 'BAJO' } };
             opUnitState[opId].units[userId] = { id: userId, callSign, socketId: socket.id, status: 'WAITING FOR GPS...', lat: 0, lng: 0 };
 
             await logEvent(opId, 'join-operation', { userId, callSign });
@@ -713,31 +713,6 @@ io.on('connection', (socket) => {
         }
     });
 
-    socket.on('sos-alert', async ({ lat, lng }) => {
-        const opId = socket.OpId;
-        if (!opId) return;
-
-        const sosTicket = `SOS-TICKET-${socket.UserId || Date.now().toString().slice(-4)}`;
-
-        // Insert channel
-        await supabase.from('channels').insert([{ op_id: opId, name: sosTicket }]);
-
-        notifyChannelsUpdated(opId);
-        if (opUnitState[opId]) opUnitState[opId].sosActive += 1;
-
-        emitForceJoin(socket.id, opId, sosTicket);
-
-        io.to(`admin-${opId}`).emit('sos-triggered', {
-            userId: socket.UserId,
-            channelName: sosTicket,
-            lat,
-            lng
-        });
-
-        await logEvent(opId, 'sos-triggered', { userId: socket.UserId, channelName: sosTicket, lat, lng });
-        pushInsight(opId, { dispatchTask: { channel: sosTicket, lat, lng, count: 1 } });
-    });
-
     // --- WebRTC ---
     // Forward signaling only when the target belongs to the same operation as
     // the sender (or the sender is that op's admin). Prevents directing audio
@@ -825,7 +800,6 @@ setInterval(() => {
     activeOpIds.forEach(opId => {
         let rawScore = 0;
         let activeIncidents = 0;
-        let sosAlerts = 0;
         let busyOperators = 0;
 
         const rooms = io.sockets.adapter.rooms;
@@ -842,9 +816,6 @@ setInterval(() => {
                 if (channelName.startsWith('INCIDENT-')) {
                     activeIncidents++;
                     rawScore += 15;
-                } else if (channelName.startsWith('SOS-')) {
-                    sosAlerts++;
-                    rawScore += 30;
                 }
 
                 if (channelName !== 'BASE' && channelName !== 'LOGISTICS') {

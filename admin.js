@@ -469,28 +469,6 @@ function updateUnitMarker(data) {
     }
 }
 
-socket.on('sos-triggered', ({ userId, channelName, lat, lng }) => {
-    console.warn("SOS TRIGGERED:", userId, channelName);
-    const unit = Object.values(units).find(u => u.id === userId);
-    if (!unit) return;
-
-    if (unit.marker) {
-        unit.marker.openPopup();
-        const popupContent = `<b>${unit.callSign}</b><br>ID: ${unit.id}<br><b style="color:#ff3b30">EMERGENCY SOS</b>`;
-        unit.marker.setPopupContent(popupContent);
-    }
-
-    if (map && lat && lng) {
-        map.flyTo([lat, lng], 16);
-    }
-
-    const mainMap = document.getElementById('admin-map');
-    if (mainMap) {
-        mainMap.style.border = "2px solid #ff3b30";
-        setTimeout(() => mainMap.style.border = "none", 5000);
-    }
-});
-
 // DOM Elements
 const unitsList = document.getElementById('units-list');
 

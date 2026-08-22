@@ -64,21 +64,11 @@ async function run() {
     });
     assert.strictEqual(mode, 'SUGGEST_APPROVE');
 
-    // Unit join + SOS -> AI insight with dispatch
+    // Unit join + AI insight
     await new Promise(r => client.on('connect', r));
     client.emit('join-operation', { opId: 'itest', token, userId: 'u1', callSign: 'ALPHA' });
     await emitUntil(client, 'join-operation', { opId: 'itest', token, userId: 'u1', callSign: 'ALPHA' }, 'operation-config');
     client.emit('update-location', { id: 'u1', lat: 19.4, lng: -99.1 });
-
-    let gotDispatch = false;
-    await new Promise((resolve) => {
-        admin.on('ai-insight', ins => {
-            if (ins.dispatch && ins.dispatch.recommended.length) { gotDispatch = true; resolve(); }
-        });
-        setTimeout(() => client.emit('sos-alert', { lat: 19.41, lng: -99.12 }), 300);
-        setTimeout(resolve, 4000);
-    });
-    assert.ok(gotDispatch, 'SOS should produce a dispatch recommendation');
 
     // Timeline request
     admin.emit('request-timeline');

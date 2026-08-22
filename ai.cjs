@@ -72,10 +72,9 @@ async function callLLM(system, user) {
 // --- Summarize a shift from its event log ---
 async function summarizeShift(events = []) {
     const counts = {};
-    let sos = 0, dispatches = 0, joins = 0, locations = 0;
+    let dispatches = 0, joins = 0, locations = 0;
     for (const e of events) {
         counts[e.type] = (counts[e.type] || 0) + 1;
-        if (e.type === 'sos-triggered') sos++;
         if (e.type === 'dispatch') dispatches++;
         if (e.type === 'join-operation') joins++;
         if (e.type === 'update-location') locations++;
@@ -87,18 +86,17 @@ async function summarizeShift(events = []) {
 
     let text = `Resumen operacional: ${total} eventos en ~${durationMin} min. `;
     text += `${joins} unidades conectadas, ${locations} actualizaciones de GPS, `;
-    text += `${dispatches} despachos, ${sos} alertas SOS. `;
-    if (sos > 0) text += `Se requiere revisión post-incidente por SOS activado. `;
+    text += `${dispatches} despachos. `;
     if (dispatches === 0 && joins > 0) text += `Sin despachos ejecutados pese a tener unidades activas. `;
 
     if (llmAvailable()) {
         const llm = await callLLM(
             "Eres el analista de operaciones de un centro de mando táctico (walkie-talkie). Redacta un resumen ejecutivo breve y profesional en español.",
-            `Eventos de la operación: ${JSON.stringify({ total, joins, locations, dispatches, sos, durationMin, counts })}`
+            `Eventos de la operación: ${JSON.stringify({ total, joins, locations, dispatches, durationMin, counts })}`
         );
         if (llm) text = llm;
     }
-    return { text, metrics: { total, joins, locations, dispatches, sos, durationMin } };
+    return { text, metrics: { total, joins, locations, dispatches, durationMin } };
 }
 
 // --- Dispatch recommendation: pick best unit(s) for a task ---
@@ -124,14 +122,10 @@ function recommendDispatch(units = [], task = {}) {
 }
 
 // --- Real-time supervisor: propose actions from current state ---
-// state: { chaos: {index, state}, units: [...], openIncidents: number, sosActive: number }
+// state: { chaos: {index, state}, units: [...], openIncidents: number }
 function supervise(state = {}) {
     const actions = [];
     const chaosIdx = state.chaos?.index ?? 0;
-    if (state.sosActive > 0) {
-        actions.push({ type: 'PRIORITIZE_SOS', priority: 'CRITICAL',
-            text: `SOS activo(s): ${state.sosActive}. Despachar unidad de respuesta inmediata y abrir canal dedicado.` });
-    }
     if (chaosIdx >= 75) {
         actions.push({ type: 'SPLIT_COMMS', priority: 'HIGH',
             text: 'Caos CRÍTICO: dividir en canales tácticos por zona para reducir saturación.' });
@@ -150,20 +144,17 @@ function supervise(state = {}) {
 }
 
 // --- Learn from a finished shift and produce predictions ---
-// memory.learned: { peakHours: {hour: count}, weakUnits: {id: count}, sosZones: {zone: count} }
+// memory.learned: { peakHours: {hour: count}, weakUnits: {id: count} }
 // events: shift events
 function learnFromShift(memory = { learned: {} }, events = []) {
     const learned = JSON.parse(JSON.stringify(memory.learned || {}));
     learned.peakHours = learned.peakHours || {};
     learned.weakUnits = learned.weakUnits || {};
-    learned.sosZones = learned.sosZones || {};
 
     for (const e of events) {
         const h = new Date(e.ts).getUTCHours();
         learned.peakHours[h] = (learned.peakHours[h] || 0) + 1;
         if (e.type === 'unit-offline') learned.weakUnits[e.payload?.id] = (learned.weakUnits[e.payload?.id] || 0) + 1;
-        if (e.type === 'sos-triggered' && e.payload?.channelName)
-            learned.sosZones[e.payload.channelName] = (learned.sosZones[e.payload.channelName] || 0) + 1;
     }
 
     // Predictions

@@ -26,13 +26,10 @@ test('summarizeShift counts events', async () => {
     const events = [
         { ts: '2026-01-01T00:00:00Z', type: 'join-operation' },
         { ts: '2026-01-01T00:01:00Z', type: 'update-location' },
-        { ts: '2026-01-01T00:02:00Z', type: 'sos-triggered' },
     ];
     const s = await AI.summarizeShift(events);
-    assert.strictEqual(s.metrics.total, 3);
+    assert.strictEqual(s.metrics.total, 2);
     assert.strictEqual(s.metrics.joins, 1);
-    assert.strictEqual(s.metrics.sos, 1);
-    assert.match(s.text, /SOS/);
 });
 
 test('recommendDispatch returns nearest active unit', () => {
@@ -50,13 +47,8 @@ test('recommendDispatch returns empty when none active', () => {
     assert.strictEqual(d.recommended.length, 0);
 });
 
-test('supervise flags SOS', () => {
-    const actions = AI.supervise({ chaos: { index: 10, state: 'BAJO' }, units: [], openIncidents: 0, sosActive: 1 });
-    assert.ok(actions.some(a => a.type === 'PRIORITIZE_SOS'));
-});
-
 test('supervise flags high chaos', () => {
-    const actions = AI.supervise({ chaos: { index: 85, state: 'CRITICO' }, units: [], openIncidents: 0, sosActive: 0 });
+    const actions = AI.supervise({ chaos: { index: 85, state: 'CRITICO' }, units: [], openIncidents: 0 });
     assert.ok(actions.some(a => a.priority === 'HIGH'));
 });
 
@@ -64,7 +56,6 @@ test('learnFromShift builds predictions', () => {
     const mem = { learned: {} };
     const events = [
         { ts: '2026-01-01T03:00:00Z', type: 'unit-offline', payload: { id: 'u7' } },
-        { ts: '2026-01-01T03:00:00Z', type: 'sos-triggered', payload: { channelName: 'SOS-1' } },
     ];
     const out = AI.learnFromShift(mem, events);
     assert.strictEqual(out.learned.weakUnits['u7'], 1);

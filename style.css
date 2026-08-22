@@ -966,17 +966,6 @@ canvas#visualizer {
 .override-overlay.show {
     opacity: 1;
     pointer-events: auto;
-    animation: flash-red 1s infinite alternate;
-}
-
-@keyframes flash-red {
-    0% {
-        background: rgba(255, 59, 48, 0.85);
-    }
-
-    100% {
-        background: rgba(200, 20, 15, 0.95);
-    }
 }
 
 .override-content {
