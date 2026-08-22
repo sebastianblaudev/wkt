@@ -66,19 +66,24 @@ function joinViaDeepLink() {
     if (!isPoweredOn) {
         try { powerBtn.click(); } catch (e) { console.error("deep link powerBtn:", e); }
     }
-    // If socket is already connected (auto-connected on page load), just emit
-    // join-operation directly. Disconnect/reconnect would kill the session.
+    function emitJoin() {
+        console.log('[DEEPLINK] Emitting join-operation');
+        socket.emit('join-operation', {
+            opId: opIdParam,
+            token: tokenParam,
+            userId: localStorage.getItem('walkie_user_id') || generateUUID(),
+            callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
+        });
+    }
+    // Wait until socket is connected, then emit join-operation.
     setTimeout(() => {
         if (socket.connected) {
-            console.log('[DEEPLINK] Socket already connected, emitting join-operation directly');
-            socket.emit('join-operation', {
-                opId: opIdParam,
-                token: tokenParam,
-                userId: localStorage.getItem('walkie_user_id') || generateUUID(),
-                callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
-            });
+            emitJoin();
         } else {
-            socket.connect();
+            // Socket still connecting — wait for it
+            const onConnect = () => { socket.off('connect', onConnect); emitJoin(); };
+            socket.on('connect', onConnect);
+            if (!socket.connected) socket.connect();
         }
     }, 500);
 }
@@ -127,20 +132,8 @@ window.addEventListener('DOMContentLoaded', () => {
     } catch (_) {}
 });
 
-// Strategy 3: Retry connecting every 500ms for up to 5 seconds if deep link
-// params are set but the socket hasn't reconnected yet.
-let deepLinkRetryCount = 0;
-const deepLinkRetry = setInterval(() => {
-    if (!deepLinkPending || deepLinkRetryCount > 10) {
-        clearInterval(deepLinkRetry);
-        return;
-    }
-    deepLinkRetryCount++;
-    if (socket.connected) {
-        socket.disconnect();
-    }
-    socket.connect();
-}, 500);
+// Strategy 3 is removed — it disconnected the socket every 500ms, killing the
+// join-operation response before it arrived. joinViaDeepLink handles retries now.
 
 // --- Auto-Initialize Logic ---
 const autoInit = () => {
