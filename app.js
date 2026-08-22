@@ -68,16 +68,14 @@ function activateDeepLink(op, token) {
 
 function joinViaDeepLink() {
     if (!opIdParam || !tokenParam) return;
-    console.log('[DEEPLINK] joinViaDeepLink - emitting join-operation with stored params');
-    // Emite join-operation directamente ya que los params ya están en localStorage
-    // después de activateDeepLink. El server validará el token y responderá
-    // con operation-config, que hará que el client una el canal y muestre ONLINE.
-    socket.emit('join-operation', {
-        opId: opIdParam,
-        token: tokenParam,
-        userId: localStorage.getItem('walkie_user_id') || generateUUID(),
-        callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
-    });
+    console.log('[DEEPLINK] joinViaDeepLink - power on and let connect handler emit join-operation');
+    // NO emit join-operation here — the connect handler already does this
+    // with the same opIdParam/tokenParam. Emitting here would cause a double
+    // join-operation → double operation-config → double joinRoom.
+    // Just ensure the device is powered on so the PTT works once joined.
+    if (!isPoweredOn) {
+        powerOn().catch(e => console.error('[DEEPLINK] powerOn error:', e));
+    }
 }
 
 // Try multiple strategies to capture the deep link URL.
@@ -142,7 +140,7 @@ window.addEventListener('DOMContentLoaded', () => {
 const autoInit = () => {
     if (isPoweredOn) return;
     console.log("System Auto-Initialization...");
-    try { powerBtn.click(); } catch (e) { console.error("autoInit click error:", e); }
+    powerOn().catch(e => console.error("autoInit powerOn error:", e));
 };
 
 window.addEventListener('load', () => {
@@ -363,12 +361,15 @@ socket.on('operation-config', (config) => {
         updateDebug("TURN configured");
     }
 
-    // Auto-join last channel if already in this op, else default channel
+    // Auto-join last channel if already in this op, else default channel.
+    // Note: isPoweredOn is NOT checked here — this handler fires asynchronously
+    // and may arrive before powerOn() finishes. Channel subscription is independent
+    // of mic/audio power state.
     const savedChannel = localStorage.getItem('walkie_last_channel');
-    if (savedChannel && isPoweredOn) {
+    if (savedChannel && !isSwitchingChannels) {
         console.log("Re-joining last channel:", savedChannel);
         joinRoom(savedChannel);
-    } else if (config.defaultChannel && !roomId && isPoweredOn) {
+    } else if (config.defaultChannel && !roomId && !isSwitchingChannels) {
         console.log("Auto-joining default channel:", config.defaultChannel);
         joinRoom(config.defaultChannel);
     }
