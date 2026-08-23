@@ -8,13 +8,12 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 
-# Copy server source (CommonJS .cjs files + static admin/app assets).
-COPY server.cjs ./
-COPY ai.cjs ./
-COPY schema.sql ./
+# Copy server source and all frontend assets
+COPY server.cjs ai.cjs schema.sql mock_db.cjs ./
 COPY scripts ./scripts
-COPY admin.html admin.js style.css gps-admin.js gps-admin.html ./ 2>/dev/null || true
-COPY public ./public 2>/dev/null || true
+COPY index.html app.js admin.html admin.js style.css landing.html superadmin.html superadmin.js gps.html ./
+COPY dist ./dist
+COPY public ./public
 
 # The server reads PORT from the environment (InstaPods sets it).
 ENV PORT=3000
