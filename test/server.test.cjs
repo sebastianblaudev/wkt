@@ -5,11 +5,18 @@ const { spawn } = require('child_process');
 const path = require('path');
 const { io } = require('socket.io-client');
 
+const { execSync } = require('child_process');
 const PORT = 3999;
 const URL = `http://localhost:${PORT}`;
 let server;
 
+process.on('exit', () => { try { if (server) server.kill('SIGKILL'); } catch (_) {} });
+process.on('uncaughtException', (err) => { console.error(err); try { if (server) server.kill('SIGKILL'); } catch (_) {} process.exit(1); });
+
 function startServer() {
+    try {
+        execSync(`kill -9 $(lsof -t -i:${PORT}) 2>/dev/null || true`);
+    } catch (_) {}
     return new Promise((resolve, reject) => {
         server = spawn('node', ['server.cjs'], {
             cwd: path.join(__dirname, '..'),
@@ -45,44 +52,58 @@ async function run() {
     await startServer();
     const admin = connect();
     const client = connect();
+    const opId = 'itest-' + Math.floor(Math.random() * 10000);
+    let token = null;
 
-    // Auth + create tenant
-    await new Promise(r => admin.on('connect', r));
-    admin.emit('login-super-admin', { key: 'test-key' });
-    const auth = await emitUntil(admin, 'create-tenant', { key: 'test-key', opId: 'itest', password: 'p' }, 'tenant-created');
-    const token = auth.token;
-    admin.emit('login-admin', { opId: 'itest', password: 'p' });
-    await emitUntil(admin, 'login-admin', { opId: 'itest', password: 'p' }, 'admin-authenticated');
+    console.log('Server integration tests');
 
-    // Autonomy mode change (discard any autonomy-mode event queued from login-admin)
-    const mode = await new Promise((resolve) => {
-        const t = setTimeout(() => resolve('TIMEOUT'), 4000);
-        admin.on('autonomy-mode', m => {
-            if (m === 'SUGGEST_APPROVE') { clearTimeout(t); resolve(m); }
-        });
-        admin.emit('set-autonomy-mode', { mode: 'SUGGEST_APPROVE' });
+    await test('super-admin login and tenant creation', async () => {
+        await new Promise(r => admin.on('connect', r));
+        admin.emit('login-super-admin', { key: 'test-key' });
+        const auth = await emitUntil(admin, 'create-tenant', { key: 'test-key', opId, password: 'p' }, 'tenant-created');
+        token = auth.token;
+        assert.ok(token);
     });
-    assert.strictEqual(mode, 'SUGGEST_APPROVE');
 
-    // Unit join + AI insight
-    await new Promise(r => client.on('connect', r));
-    client.emit('join-operation', { opId: 'itest', token, userId: 'u1', callSign: 'ALPHA' });
-    await emitUntil(client, 'join-operation', { opId: 'itest', token, userId: 'u1', callSign: 'ALPHA' }, 'operation-config');
-    client.emit('update-location', { id: 'u1', lat: 19.4, lng: -99.1 });
+    await test('admin login and authentication', async () => {
+        admin.emit('login-admin', { opId, password: 'p' });
+        await emitUntil(admin, 'login-admin', { opId, password: 'p' }, 'admin-authenticated');
+    });
 
-    // Timeline request
-    admin.emit('request-timeline');
-    const tl = await emitUntil(admin, 'request-timeline', {}, 'timeline');
-    assert.ok(Array.isArray(tl.events));
+    await test('autonomy mode change', async () => {
+        const mode = await new Promise((resolve) => {
+            const t = setTimeout(() => resolve('TIMEOUT'), 4000);
+            admin.on('autonomy-mode', m => {
+                if (m === 'SUGGEST_APPROVE') { clearTimeout(t); resolve(m); }
+            });
+            admin.emit('set-autonomy-mode', { mode: 'SUGGEST_APPROVE' });
+        });
+        assert.strictEqual(mode, 'SUGGEST_APPROVE');
+    });
 
-    // HTTP timeline endpoint
-    const http = await fetch(`${URL}/timeline/itest`);
-    const body = await http.json();
-    assert.ok(Array.isArray(body.events));
+    await test('unit join operation', async () => {
+        if (!client.connected) await new Promise(r => client.on('connect', r));
+        client.emit('join-operation', { opId, token, userId: 'u1', callSign: 'ALPHA' });
+        await emitUntil(client, 'join-operation', { opId, token, userId: 'u1', callSign: 'ALPHA' }, 'operation-config');
+        client.emit('update-location', { id: 'u1', lat: 19.4, lng: -99.1 });
+    });
+
+    await test('request timeline via socket', async () => {
+        admin.emit('request-timeline');
+        const tl = await emitUntil(admin, 'request-timeline', {}, 'timeline');
+        assert.ok(Array.isArray(tl.events));
+    });
+
+    await test('HTTP timeline endpoint', async () => {
+        const http = await fetch(`${URL}/timeline/${opId}`);
+        const body = await http.json();
+        assert.ok(Array.isArray(body.events));
+    });
 
     admin.close(); client.close();
     server.kill();
     console.log(`\n${passed} passed`);
+    process.exit(0);
 }
 
 run().catch(e => { console.error(e); process.exit(1); });

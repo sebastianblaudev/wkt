@@ -93,6 +93,7 @@ describe('Socket Server Integration (server.cjs)', () => {
             admin.on('invite-generated', (inv) => {
                 token2 = inv.token;
                 admin.disconnect();
+                client1.connect();
             });
 
             client1.on('connect', () => {
@@ -124,7 +125,6 @@ describe('Socket Server Integration (server.cjs)', () => {
                     }, 500);
                 });
             });
-            client1.connect();
         }, 12000);
     });
 
@@ -206,4 +206,75 @@ describe('Socket Server Integration (server.cjs)', () => {
             });
         });
     }, 12000);
+
+    it('should manage PTT floor control (grant floor, reject busy floor, release floor)', () => {
+        const client1 = new Client(`http://localhost:${port}`, { autoConnect: false });
+        const client2 = new Client(`http://localhost:${port}`, { autoConnect: false });
+        
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => reject(new Error("PTT floor test timed out")), 10000);
+            let token1 = null, token2 = null;
+
+            const admin = new Client(`http://localhost:${port}`);
+            admin.on('connect', () => {
+                admin.emit('create-tenant', { key: SUPER_ADMIN_KEY, opId: 'ptt-floor-op', password: 'pw' });
+            });
+            admin.on('tenant-created', (t) => {
+                token1 = t.token;
+                admin.emit('generate-invite', { opId: 'ptt-floor-op' });
+            });
+            admin.on('invite-generated', (inv) => {
+                token2 = inv.token;
+                admin.disconnect();
+
+                // Connect Client 1
+                client1.on('connect', () => {
+                    client1.emit('join-operation', { opId: 'ptt-floor-op', token: token1, userId: 'u1', callSign: 'C1' });
+                    client1.on('operation-config', () => {
+                        client1.emit('join-channel', { opId: 'ptt-floor-op', channelName: 'CHANNEL 1' });
+
+                        // Connect Client 2
+                        client2.on('connect', () => {
+                            client2.emit('join-operation', { opId: 'ptt-floor-op', token: token2, userId: 'u2', callSign: 'C2' });
+                            client2.on('operation-config', () => {
+                                client2.emit('join-channel', { opId: 'ptt-floor-op', channelName: 'CHANNEL 1' });
+
+                                // Client 2 listens for PTT active from Client 1
+                                client2.on('ptt-active', (data) => {
+                                    expect(data.callSign).toBe('C1');
+                                    expect(data.channel).toBe('CHANNEL 1');
+
+                                    // Now Client 2 tries to speak while Client 1 holds floor
+                                    client2.emit('ptt-start', { opId: 'ptt-floor-op', channelName: 'CHANNEL 1', userId: 'u2', callSign: 'C2' });
+                                });
+
+                                client2.on('ptt-busy', (busyData) => {
+                                    expect(busyData.ownerCallSign).toBe('C1');
+                                    expect(busyData.channel).toBe('CHANNEL 1');
+
+                                    // Client 1 releases floor
+                                    client2.on('ptt-idle', (idleData) => {
+                                        expect(idleData.channel).toBe('CHANNEL 1');
+                                        client1.disconnect();
+                                        client2.disconnect();
+                                        clearTimeout(timeout);
+                                        resolve();
+                                    });
+
+                                    client1.emit('ptt-stop', { opId: 'ptt-floor-op', channelName: 'CHANNEL 1' });
+                                });
+
+                                // Client 1 requests PTT floor
+                                setTimeout(() => {
+                                    client1.emit('ptt-start', { opId: 'ptt-floor-op', channelName: 'CHANNEL 1', userId: 'u1', callSign: 'C1' });
+                                }, 300);
+                            });
+                        });
+                        client2.connect();
+                    });
+                });
+                client1.connect();
+            });
+        }, 12000);
+    });
 });

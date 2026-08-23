@@ -6,7 +6,7 @@ const getServerUrl = () => {
         return localStorage.getItem('walkieTalkieServer');
     }
 
-    // 2. Capacitor/embebbed WebView: always use production server.
+    // 2. Capacitor/embedded WebView: always use production server.
     if (window.Capacitor) {
         return PROD_SERVER_URL;
     }
@@ -20,8 +20,8 @@ const getServerUrl = () => {
         return `http://${hostname}:3000`;
     }
 
-    // 4. Live web domain (the deployed app). Use it directly.
-    if (hostname.includes('instapods.app') || hostname.includes('onrender.com')) {
+    // 4. Running in browser: use same origin (localhost, custom domain, or deployed app)
+    if (window.location.origin && window.location.origin.startsWith('http')) {
         return window.location.origin;
     }
 
@@ -38,6 +38,30 @@ let socket = io(serverUrl, {
     reconnectionDelayMax: 5000,
     timeout: 20000
 });
+
+function getOrCreateUserId() {
+    let id = localStorage.getItem('walkie_user_id');
+    if (!id) {
+        id = 'U-' + Math.floor(1000 + Math.random() * 9000);
+        localStorage.setItem('walkie_user_id', id);
+    }
+    return id;
+}
+
+function getOrCreateCallSign() {
+    let cs = localStorage.getItem('walkie_callsign');
+    if (!cs) {
+        const names = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ROVER', 'EAGLE'];
+        const randomName = names[Math.floor(Math.random() * names.length)];
+        const randomNum = Math.floor(1 + Math.random() * 99).toString().padStart(2, '0');
+        cs = `${randomName}-${randomNum}`;
+        localStorage.setItem('walkie_callsign', cs);
+    }
+    return cs;
+}
+
+let userId = getOrCreateUserId();
+let userCallSign = getOrCreateCallSign();
 
 // --- Operation Logic ---
 let currentOpId = null;
@@ -343,10 +367,12 @@ socket.on('operation-config', (config) => {
     statusText.innerText = `OP: ${config.opId.toUpperCase()}`;
     updateChannelUI(config.channels);
 
-    // Persist op/token so we can auto re-join after a server "wake"/reconnect.
-    if (opIdParam && tokenParam) {
-        localStorage.setItem('walkie_op_id', opIdParam);
-        localStorage.setItem('walkie_op_token', tokenParam);
+    // Persist op so we can auto re-join after a server "wake"/reconnect.
+    if (currentOpId) {
+        localStorage.setItem('walkie_op_id', currentOpId);
+        // Single-use token was consumed by server. Clear it so reconnects rely on unit identity.
+        localStorage.removeItem('walkie_op_token');
+        tokenParam = null;
     }
 
     // Store per-channel signaling keys for HMAC-protected signaling.
@@ -375,25 +401,107 @@ socket.on('operation-config', (config) => {
     }
 });
 
-function playTacticalAlert() {
-    if (!audioContext) return;
-    if (audioContext.state === 'suspended') audioContext.resume();
+function ensureAudioContext() {
+    if (!audioContext) {
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) audioContext = new AudioCtx();
+    }
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+    }
+    return audioContext;
+}
+
+function playPttStartBeep() {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
     try {
-        const osc = audioContext.createOscillator();
-        const gainInfo = audioContext.createGain();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(1200, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1800, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.08);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.08);
+    } catch (e) {
+        console.warn("PTT start tone failed", e);
+    }
+}
+
+function playRogerBeep() {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    try {
+        const osc1 = ctx.createOscillator();
+        const osc2 = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc1.connect(gain);
+        osc2.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc1.type = 'sine';
+        osc2.type = 'sine';
+        osc1.frequency.setValueAtTime(1240, ctx.currentTime);
+        osc2.frequency.setValueAtTime(880, ctx.currentTime + 0.07);
+
+        gain.gain.setValueAtTime(0.15, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.16);
+
+        osc1.start(ctx.currentTime);
+        osc1.stop(ctx.currentTime + 0.07);
+        osc2.start(ctx.currentTime + 0.07);
+        osc2.stop(ctx.currentTime + 0.16);
+    } catch (e) {
+        console.warn("Roger beep failed", e);
+    }
+}
+
+function playBusyBeep() {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    try {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(440, ctx.currentTime);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime);
+        gain.gain.setValueAtTime(0, ctx.currentTime + 0.08);
+        gain.gain.setValueAtTime(0.2, ctx.currentTime + 0.1);
+        gain.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.2);
+
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.2);
+    } catch (e) {
+        console.warn("Busy tone failed", e);
+    }
+}
+
+function playTacticalAlert() {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    try {
+        const osc = ctx.createOscillator();
+        const gainInfo = ctx.createGain();
         osc.connect(gainInfo);
-        gainInfo.connect(audioContext.destination);
+        gainInfo.connect(ctx.destination);
 
         osc.type = 'square';
-        osc.frequency.setValueAtTime(880, audioContext.currentTime); // A5
-        osc.frequency.setValueAtTime(1108.73, audioContext.currentTime + 0.1); // C#6
+        osc.frequency.setValueAtTime(880, ctx.currentTime);
+        osc.frequency.setValueAtTime(1108.73, ctx.currentTime + 0.1);
 
-        gainInfo.gain.setValueAtTime(0, audioContext.currentTime);
-        gainInfo.gain.linearRampToValueAtTime(0.3, audioContext.currentTime + 0.02);
-        gainInfo.gain.exponentialRampToValueAtTime(0.01, audioContext.currentTime + 0.4);
+        gainInfo.gain.setValueAtTime(0, ctx.currentTime);
+        gainInfo.gain.linearRampToValueAtTime(0.3, ctx.currentTime + 0.02);
+        gainInfo.gain.exponentialRampToValueAtTime(0.01, ctx.currentTime + 0.4);
 
-        osc.start(audioContext.currentTime);
-        osc.stop(audioContext.currentTime + 0.5);
+        osc.start(ctx.currentTime);
+        osc.stop(ctx.currentTime + 0.5);
     } catch (e) {
         console.warn("Audio alert failed", e);
     }
@@ -433,7 +541,7 @@ socket.on('force-join-channel', (payload) => {
 
 socket.on('join-error', (msg) => {
     console.error("ACCESS DENIED:", msg);
-    statusText.innerText = "ACCESS DENIED";
+    statusText.innerText = `ACCESS DENIED: ${msg}`;
     statusText.classList.add('error-blink');
 });
 
@@ -544,11 +652,11 @@ function joinRoom(room) {
     roomId = room;
     localStorage.setItem('walkie_last_channel', room);
 
-    roomInput.value = roomId;
-    statusText.innerText = "TUNING...";
-    joinBtn.disabled = true;
-    roomInput.disabled = true;
-    talkBtn.disabled = false;
+    if (roomInput) roomInput.value = roomId;
+    if (statusText) statusText.innerText = "TUNING...";
+    if (joinBtn) joinBtn.disabled = true;
+    if (roomInput) roomInput.disabled = true;
+    if (talkBtn) talkBtn.disabled = false;
 
     // Close WebRTC
     Object.keys(peers).forEach(key => {
@@ -569,7 +677,9 @@ function joinRoom(room) {
     // Reset flag after a short delay
     setTimeout(() => {
         isSwitchingChannels = false;
-        statusText.innerText = "ONLINE";
+        if (statusText && !isTransmitting && !isReceiving) {
+            statusText.innerText = "STANDBY";
+        }
         updateDebug(`Channel: ${room}`);
     }, 500);
 }
@@ -579,26 +689,31 @@ function joinRoom(room) {
 const originalConnectHandler = socket.listeners('connect')[0];
 socket.off('connect'); // Remove old one to replace/wrap it
 
-socket.on('connect', () => {
+function handleSocketConnect() {
     updateDebug("Network Link: ESTABLISHED");
     console.log('Socket Connected!', socket.id);
 
     const savedOp = localStorage.getItem('walkie_op_id');
     const savedToken = localStorage.getItem('walkie_op_token');
     const joinOp = opIdParam || savedOp;
-    const joinToken = tokenParam || savedToken;
-    if (joinOp && joinToken) {
+    const joinToken = opIdParam ? tokenParam : savedToken;
+    if (joinOp) {
         console.log('[CONNECT] Joining operation:', joinOp);
         socket.emit('join-operation', {
             opId: joinOp,
-            token: joinToken,
-            userId: localStorage.getItem('walkie_user_id') || generateUUID(),
-            callSign: localStorage.getItem('walkie_callsign') || 'OPERATOR'
+            token: joinToken || undefined,
+            userId: getOrCreateUserId(),
+            callSign: getOrCreateCallSign()
         });
     } else {
         console.log('[CONNECT] No operation to join (opIdParam:', opIdParam, 'savedOp:', savedOp, ')');
     }
-});
+}
+
+socket.on('connect', handleSocketConnect);
+if (socket.connected) {
+    handleSocketConnect();
+}
 
 // --- GPS Logic ---
 let watchId = null;
@@ -626,9 +741,9 @@ function startGpsTracking() {
             });
         }, (error) => {
             console.warn("GPS Error:", error.message);
-            if (error.code === 1) statusText.innerText = "NO LOCATION";
+            if (error.code === 1 && statusText) statusText.innerText = "NO LOCATION";
             if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') {
-                statusText.innerText = "GPS BLOCKED";
+                if (statusText) statusText.innerText = "GPS BLOCKED";
             }
         }, {
             enableHighAccuracy: true,
@@ -651,11 +766,13 @@ function stopGpsTracking() {
 
 function forcePowerOff() {
     isPoweredOn = false;
-    statusText.innerText = "OFFLINE";
-    statusText.className = "";
-    joinBtn.disabled = true;
-    talkBtn.disabled = true;
-    pttContainer.classList.remove('transmitting', 'receiving');
+    if (statusText) {
+        statusText.innerText = "OFFLINE";
+        statusText.className = "";
+    }
+    if (joinBtn) joinBtn.disabled = true;
+    if (talkBtn) talkBtn.disabled = true;
+    if (pttContainer) pttContainer.classList.remove('transmitting', 'receiving');
 
     if (localStream) {
         localStream.getTracks().forEach(track => track.stop());
@@ -765,23 +882,82 @@ powerBtn.addEventListener('click', async () => {
     }
 });
 
-// --- PTT Logic ---
+// --- PTT & Floor Control Logic ---
+let isTransmitting = false;
+let isReceiving = false;
+let pttMode = localStorage.getItem('walkie_ptt_mode') || 'hold'; // 'hold' or 'toggle'
+let pointerActiveId = null;
+
+// PTT Floor Control Socket Events
+socket.on('ptt-busy', (data) => {
+    if (isTransmitting) {
+        isTransmitting = false;
+        if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = false);
+        talkBtn.classList.remove('talking');
+        pttContainer.classList.remove('transmitting');
+    }
+    playBusyBeep();
+    statusText.innerText = `BUSY: ${data.ownerCallSign || 'CANAL OCUPADO'}`;
+    statusText.classList.add('error-blink');
+    updateDebug(`Floor Busy: ${data.ownerCallSign}`);
+    setTimeout(() => {
+        if (!isTransmitting && !isReceiving) {
+            statusText.innerText = "STANDBY";
+            statusText.classList.remove('error-blink');
+        }
+    }, 2500);
+});
+
+socket.on('ptt-active', (data) => {
+    const isSelf = (data.socketId === socket.id || data.callerId === userId);
+    if (!isSelf) {
+        isReceiving = true;
+        statusText.innerText = `RECIBIENDO: ${data.callSign || 'OPERADOR'}`;
+        statusText.classList.remove('error-blink');
+        pttContainer.classList.add('receiving');
+        talkBtn.classList.add('receiving');
+        if (statusBar) statusBar.classList.add('receiving');
+        playPttStartBeep();
+        updateDebug(`RX Active: ${data.callSign}`);
+    } else {
+        statusText.innerText = "TRANSMITIENDO";
+        statusText.classList.remove('error-blink');
+        playPttStartBeep();
+        updateDebug("TX Floor Granted");
+    }
+});
+
+socket.on('ptt-idle', (data) => {
+    const isSelf = (data.socketId === socket.id || data.callerId === userId);
+    if (!isSelf) {
+        if (isReceiving) {
+            isReceiving = false;
+            playRogerBeep();
+        }
+        statusText.innerText = "STANDBY";
+        pttContainer.classList.remove('receiving');
+        talkBtn.classList.remove('receiving');
+        if (statusBar) statusBar.classList.remove('receiving');
+        canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+        updateDebug("RX Idle");
+    }
+});
 
 const startTx = () => {
-    if (!isPoweredOn || !roomId) return;
+    if (!isPoweredOn) return;
+    if (!roomId) {
+        const defaultCh = document.querySelector('.channel-item')?.getAttribute('data-channel') || 'CHANNEL 1';
+        joinRoom(defaultCh);
+    }
+    if (isTransmitting) return;
     
-    // Reset inactivity timer on PTT action
-    lastMotionTime = Date.now();
-    updateDebug("PTT Active - Timer Reset");
+    ensureAudioContext();
 
-    // Resume context on EVERY talk click to be 100% sure
-    if (audioContext && audioContext.state === 'suspended') audioContext.resume();
+    isTransmitting = true;
+    statusText.innerText = "SOLICITANDO CANAL...";
+    statusText.classList.remove('error-blink');
+    updateDebug("TX Request sent");
 
-    // Tactical beep removed by user request
-    // playTacticalAlert();
-
-    statusText.innerText = "TRANSMITTING";
-    updateDebug("TX Active");
     talkBtn.classList.add('talking');
     pttContainer.classList.add('transmitting');
     if (signalStrength) {
@@ -789,57 +965,118 @@ const startTx = () => {
         bars.forEach(bar => bar.style.backgroundColor = 'var(--primary-color)');
     }
     if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = true);
+
+    socket.emit('ptt-start', {
+        opId: currentOpId,
+        channelName: roomId,
+        userId: userId,
+        callSign: userCallSign
+    });
 };
 
 const stopTx = () => {
-    if (!isPoweredOn || !roomId) return;
+    if (!isPoweredOn || !roomId || !isTransmitting) return;
+    isTransmitting = false;
+
+    socket.emit('ptt-stop', {
+        opId: currentOpId,
+        channelName: roomId
+    });
+
+    playRogerBeep();
     statusText.innerText = "STANDBY";
-    talkBtn.classList.remove('talking');
-    pttContainer.classList.remove('transmitting');
+    statusText.classList.remove('error-blink');
+    talkBtn.classList.remove('talking', 'receiving');
+    pttContainer.classList.remove('transmitting', 'receiving');
     if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = false);
+    updateDebug("TX Stopped");
 };
 
-talkBtn.addEventListener('mousedown', startTx);
-window.addEventListener('mouseup', stopTx);
-talkBtn.addEventListener('touchstart', (e) => { e.preventDefault(); startTx(); });
-talkBtn.addEventListener('touchend', (e) => { e.preventDefault(); stopTx(); });
+// Pointer & Mouse/Touch Event Handlers for universal browser / test runner compatibility
+let lastPttTriggerTime = 0;
+
+const handlePttStart = (e) => {
+    const now = Date.now();
+    if (now - lastPttTriggerTime < 50) return;
+    lastPttTriggerTime = now;
+
+    if (e.cancelable) e.preventDefault();
+    ensureAudioContext();
+
+    if (pttMode === 'toggle') {
+        if (isTransmitting) {
+            stopTx();
+        } else {
+            startTx();
+        }
+    } else {
+        if (e.pointerId !== undefined && talkBtn.setPointerCapture) {
+            try { talkBtn.setPointerCapture(e.pointerId); } catch (_) {}
+            pointerActiveId = e.pointerId;
+        }
+        startTx();
+    }
+};
+
+const handlePttEnd = (e) => {
+    if (pttMode === 'hold' && isTransmitting) {
+        if (pointerActiveId !== null && e.pointerId === pointerActiveId && talkBtn.releasePointerCapture) {
+            try { talkBtn.releasePointerCapture(e.pointerId); } catch (_) {}
+            pointerActiveId = null;
+        }
+        stopTx();
+    }
+};
+
+talkBtn.addEventListener('pointerdown', handlePttStart);
+talkBtn.addEventListener('mousedown', (e) => {
+    if (window.PointerEvent && e.pointerId !== undefined) return;
+    handlePttStart(e);
+});
+talkBtn.addEventListener('touchstart', (e) => {
+    if (window.PointerEvent && e.pointerId !== undefined) return;
+    handlePttStart(e);
+});
+
+talkBtn.addEventListener('pointerup', handlePttEnd);
+talkBtn.addEventListener('pointercancel', handlePttEnd);
+talkBtn.addEventListener('mouseup', (e) => {
+    if (window.PointerEvent && e.pointerId !== undefined) return;
+    handlePttEnd(e);
+});
+talkBtn.addEventListener('touchend', (e) => {
+    if (window.PointerEvent && e.pointerId !== undefined) return;
+    handlePttEnd(e);
+});
+talkBtn.addEventListener('pointerleave', (e) => {
+    if (pttMode === 'hold' && isTransmitting) {
+        let hasCap = false;
+        try { hasCap = talkBtn.hasPointerCapture(e.pointerId); } catch (_) {}
+        if (!hasCap) stopTx();
+    }
+});
+
+// Window blur & touch safeguards
+window.addEventListener('blur', () => { if (isTransmitting) stopTx(); });
+document.addEventListener('visibilitychange', () => { if (document.hidden && isTransmitting) stopTx(); });
+window.addEventListener('touchcancel', () => { if (isTransmitting) stopTx(); });
 
 
 
 // --- Visualizer Logic ---
-let isReceiving = false;
 const statusBar = document.querySelector('.status-bar');
 
 function drawVisualizer() {
     if (!isPoweredOn) return;
     animationId = requestAnimationFrame(drawVisualizer);
 
-    if (talkBtn.classList.contains('talking')) {
+    if (talkBtn.classList.contains('talking') && analyser && dataArray) {
         analyser.getByteFrequencyData(dataArray);
         drawBars(canvas, canvasCtx, dataArray, "TX");
     }
-    else if (remoteAnalyser && remoteDataArray) {
+    else if (isReceiving && remoteAnalyser && remoteDataArray) {
         remoteAnalyser.getByteFrequencyData(remoteDataArray);
-        const sum = remoteDataArray.reduce((a, b) => a + b, 0);
-        const average = sum / remoteDataArray.length;
-
-        if (average > 10) {
-            if (!isReceiving) {
-                isReceiving = true;
-                statusText.innerText = "RECEIVING...";
-                statusBar.classList.add('receiving');
-                talkBtn.classList.add('receiving');
-            }
-            drawBars(canvas, canvasCtx, remoteDataArray, "RX");
-        } else {
-            if (isReceiving) {
-                isReceiving = false;
-                statusText.innerText = "STANDBY";
-                statusBar.classList.remove('receiving');
-                talkBtn.classList.remove('receiving');
-                canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
-            }
-        }
+        drawBars(canvas, canvasCtx, remoteDataArray, "RX");
     } else {
         canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
     }
@@ -1154,24 +1391,51 @@ if (navGps) navGps.addEventListener('click', () => gpsPanel.classList.add('show'
 if (closeGpsBtn) closeGpsBtn.addEventListener('click', () => gpsPanel.classList.remove('show'));
 
 
-let userId = localStorage.getItem('walkie_user_id');
-if (!userId) {
-    userId = 'U-' + Math.floor(1000 + Math.random() * 9000);
-    localStorage.setItem('walkie_user_id', userId);
-}
-const callSigns = ['ALPHA', 'BRAVO', 'CHARLIE', 'DELTA', 'ROVER', 'EAGLE'];
-let userCallSign = localStorage.getItem('walkie_callsign');
-if (!userCallSign) {
-    const randomName = callSigns[Math.floor(Math.random() * callSigns.length)];
-    const randomNum = Math.floor(1 + Math.random() * 99).toString().padStart(2, '0');
-    userCallSign = `${randomName}-${randomNum}`;
-    localStorage.setItem('walkie_callsign', userCallSign);
-}
-
 if (document.getElementById('profile-id')) {
     document.getElementById('profile-id').innerText = userId;
     document.getElementById('profile-callsign').innerText = userCallSign;
 }
+
+// --- PTT Mode Selector UI Binding ---
+const modeHoldBtn = document.getElementById('mode-hold-btn');
+const modeToggleBtn = document.getElementById('mode-toggle-btn');
+
+function updatePttModeUI() {
+    if (modeHoldBtn && modeToggleBtn) {
+        if (pttMode === 'toggle') {
+            modeHoldBtn.classList.remove('active');
+            modeHoldBtn.style.background = '#222';
+            modeHoldBtn.style.color = '#888';
+            modeToggleBtn.classList.add('active');
+            modeToggleBtn.style.background = 'var(--primary-color)';
+            modeToggleBtn.style.color = '#000';
+        } else {
+            modeToggleBtn.classList.remove('active');
+            modeToggleBtn.style.background = '#222';
+            modeToggleBtn.style.color = '#888';
+            modeHoldBtn.classList.add('active');
+            modeHoldBtn.style.background = 'var(--primary-color)';
+            modeHoldBtn.style.color = '#000';
+        }
+    }
+}
+
+if (modeHoldBtn) {
+    modeHoldBtn.addEventListener('click', () => {
+        pttMode = 'hold';
+        localStorage.setItem('walkie_ptt_mode', 'hold');
+        updatePttModeUI();
+    });
+}
+
+if (modeToggleBtn) {
+    modeToggleBtn.addEventListener('click', () => {
+        pttMode = 'toggle';
+        localStorage.setItem('walkie_ptt_mode', 'toggle');
+        updatePttModeUI();
+    });
+}
+updatePttModeUI();
 
 if (navProfile) navProfile.addEventListener('click', () => profileSheet.classList.add('show'));
 if (closeProfileBtn) closeProfileBtn.addEventListener('click', () => profileSheet.classList.remove('show'));

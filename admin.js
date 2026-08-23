@@ -609,3 +609,44 @@ socket.on('timeline', (data) => {
     }).join('');
 });
 
+// --- PTT Floor Overwatch Handlers ---
+const activeSpeakerBar = document.getElementById('active-speaker-bar');
+const activeSpeakerName = document.getElementById('active-speaker-name');
+
+socket.on('ptt-active', (data) => {
+    if (activeSpeakerBar && activeSpeakerName) {
+        activeSpeakerName.innerText = `${data.callSign || 'UNIDAD'} [${data.channel}]`;
+        activeSpeakerBar.style.display = 'block';
+    }
+    const unit = units[data.socketId];
+    if (unit && unit.marker) {
+        const markerEl = unit.marker.getElement();
+        if (markerEl) {
+            const glowEl = markerEl.querySelector('.glow-marker');
+            if (glowEl) {
+                glowEl.style.boxShadow = '0 0 30px 12px #50E3C2';
+                glowEl.style.transform = 'scale(1.4)';
+                glowEl.style.transition = 'all 0.2s ease-in-out';
+            }
+        }
+    }
+});
+
+socket.on('ptt-idle', (data) => {
+    if (activeSpeakerBar) {
+        activeSpeakerBar.style.display = 'none';
+    }
+    const unit = units[data.socketId];
+    if (unit && unit.marker) {
+        const markerEl = unit.marker.getElement();
+        if (markerEl) {
+            const glowEl = markerEl.querySelector('.glow-marker');
+            if (glowEl) {
+                const color = getColorForUnit(unit.callSign);
+                glowEl.style.boxShadow = `0 0 20px 6px ${color}66`;
+                glowEl.style.transform = 'scale(1.0)';
+            }
+        }
+    }
+});
+

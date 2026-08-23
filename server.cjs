@@ -69,8 +69,30 @@ const RATE_LIMITS = {
     'join-operation': { max: 20, windowMs: 60000 },
     'offer': { max: 60, windowMs: 60000 },
     'answer': { max: 60, windowMs: 60000 },
-    'ice-candidate': { max: 200, windowMs: 60000 }
+    'ice-candidate': { max: 200, windowMs: 60000 },
+    'ptt-start': { max: 120, windowMs: 60000 },
+    'ptt-stop': { max: 120, windowMs: 60000 }
 };
+
+// Maps socket.id -> opId so we can validate WebRTC signaling targets belong
+// to the same operation (prevents directing audio signaling at arbitrary sockets).
+const socketOpId = new Map();
+// Maps `${opId}-${channelName}` -> { socketId, userId, callSign, startTime } for floor control.
+const channelFloors = new Map();
+
+function releaseSocketFloor(socket) {
+    for (const [roomKey, owner] of channelFloors.entries()) {
+        if (owner.socketId === socket.id) {
+            channelFloors.delete(roomKey);
+            const [opId, ...chParts] = roomKey.split('-');
+            const channelName = chParts.join('-');
+            const payload = { channel: channelName, callerId: owner.userId, callSign: owner.callSign, socketId: socket.id };
+            io.to(roomKey).emit('ptt-idle', payload);
+            if (opId) io.to(`admin-${opId}`).emit('ptt-idle', { ...payload, opId });
+            console.log(`[PTT] Floor released automatically for ${owner.callSign} in ${roomKey}`);
+        }
+    }
+}
 
 function rateLimited(socket, event) {
     const cfg = RATE_LIMITS[event];
@@ -87,9 +109,7 @@ function rateLimited(socket, event) {
     return rec.count > cfg.max;
 }
 
-// Maps socket.id -> opId so we can validate WebRTC signaling targets belong
-// to the same operation (prevents directing audio signaling at arbitrary sockets).
-const socketOpId = new Map();
+
 
 // --- Operational AI state (per operation, in-memory + persisted) ---
 // eventBuffers holds the current shift's events for replay/timeline + AI.
@@ -183,12 +203,16 @@ function emitForceJoin(target, opId, channelName) {
         channelKey: deriveChannelKey(opId, channelName)
     });
 }
-app.use(express.static(path.join(__dirname, 'dist'))); // Serve Vite build if exists
-app.use(express.static(path.join(__dirname, 'public'))); // Serve PWA assets
 app.use(express.static(__dirname)); // Serve root assets (app.js, style.css, etc.)
+app.use(express.static(path.join(__dirname, 'public'))); // Serve PWA assets
 
 // --- Pretty URLs ---
-app.get('/', (req, res) => res.sendFile(path.join(__dirname, 'landing.html')));
+app.get('/', (req, res) => {
+    if (req.query.op || req.query.token) {
+        return res.sendFile(path.join(__dirname, 'index.html'));
+    }
+    res.sendFile(path.join(__dirname, 'landing.html'));
+});
 app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
 app.get('/gps', (req, res) => res.sendFile(path.join(__dirname, 'gps.html')));
 app.get('/superadmin', (req, res) => res.sendFile(path.join(__dirname, 'superadmin.html')));
@@ -529,15 +553,31 @@ io.on('connection', (socket) => {
 
     socket.on('join-operation', async ({ opId, token, userId, callSign }) => {
         try {
+            console.log(`[JOIN-OP REQ] opId="${opId}" token="${token}" userId="${userId}" callSign="${callSign}"`);
             if (rateLimited(socket, 'join-operation')) {
                 return socket.emit('join-error', 'Too many join attempts');
             }
             // Validate the operation exists
             const { data: op } = await supabase.from('operations').select('id').eq('id', opId).single();
-            if (!op) return socket.emit('join-error', 'Operation not found');
+            if (!op) {
+                console.warn(`[JOIN-OP FAILED] Operation not found for opId="${opId}"`);
+                return socket.emit('join-error', `Operation not found: ${opId}`);
+            }
 
-            // Validate the invite token: must exist and not expired. Multi-use.
-            if (token) {
+            // Check if this unit is already registered in the operation (reconnection case)
+            const { data: existingUnit } = await supabase
+                .from('units')
+                .select('id')
+                .eq('id', userId)
+                .eq('op_id', opId)
+                .single();
+
+            // Validate invite token for new units joining the operation
+            if (!existingUnit) {
+                if (!token) {
+                    return socket.emit('join-error', 'Invite token required');
+                }
+
                 const { data: tokRow } = await supabase
                     .from('operation_tokens')
                     .select('token, op_id, expires_at')
@@ -552,6 +592,8 @@ io.on('connection', (socket) => {
                 if (tokRow.expires_at && new Date(tokRow.expires_at).getTime() < now) {
                     return socket.emit('join-error', 'Invite token expired');
                 }
+                // Consume token so another user cannot use this single-use invite
+                await supabase.from('operation_tokens').delete().match({ token, op_id: opId });
             }
 
             socket.join(opId);
@@ -635,6 +677,7 @@ io.on('connection', (socket) => {
 
             // Leave previous channel
             if (socket.CurrentChannel) {
+                releaseSocketFloor(socket);
                 const oldRoom = `${opId}-${socket.CurrentChannel}`;
                 socket.leave(oldRoom);
                 const oldRoomSize = io.sockets.adapter.rooms.get(oldRoom)?.size || 0;
@@ -667,6 +710,7 @@ io.on('connection', (socket) => {
     });
 
     socket.on('leave-room', (channelName) => {
+        releaseSocketFloor(socket);
         const opId = socket.OpId;
         if (!opId) return;
         const roomName = `${opId}-${channelName}`;
@@ -744,8 +788,64 @@ io.on('connection', (socket) => {
         }
     });
 
+    // --- PTT Floor Control ---
+    socket.on('ptt-start', ({ opId, channelName, userId, callSign }) => {
+        if (rateLimited(socket, 'ptt-start')) return;
+        const activeOpId = socket.OpId || opId;
+        if (!activeOpId || !channelName) return;
+        const roomKey = `${activeOpId}-${channelName}`;
+        const currentOwner = channelFloors.get(roomKey);
+
+        if (currentOwner && currentOwner.socketId !== socket.id) {
+            const ownerSocket = io.sockets.sockets.get(currentOwner.socketId);
+            if (ownerSocket && ownerSocket.connected) {
+                console.log(`[PTT] Floor busy in ${roomKey} held by ${currentOwner.callSign}`);
+                return socket.emit('ptt-busy', { channel: channelName, ownerCallSign: currentOwner.callSign });
+            }
+        }
+
+        const ownerInfo = {
+            socketId: socket.id,
+            userId: userId || socket.UserId || 'UNKNOWN',
+            callSign: callSign || socket.CallSign || 'OPERATOR',
+            startTime: Date.now()
+        };
+        channelFloors.set(roomKey, ownerInfo);
+        if (callSign) socket.CallSign = callSign;
+
+        const payload = {
+            channel: channelName,
+            callerId: ownerInfo.userId,
+            callSign: ownerInfo.callSign,
+            socketId: socket.id
+        };
+
+        io.to(roomKey).emit('ptt-active', payload);
+        io.to(`admin-${activeOpId}`).emit('ptt-active', { ...payload, opId: activeOpId });
+        socket.emit('ptt-active', payload);
+        logEvent(activeOpId, 'ptt-start', payload);
+    });
+
+    socket.on('ptt-stop', ({ opId, channelName }) => {
+        if (rateLimited(socket, 'ptt-stop')) return;
+        const activeOpId = socket.OpId || opId;
+        if (!activeOpId || !channelName) return;
+        const roomKey = `${activeOpId}-${channelName}`;
+        const currentOwner = channelFloors.get(roomKey);
+
+        if (currentOwner && currentOwner.socketId === socket.id) {
+            channelFloors.delete(roomKey);
+            const payload = { channel: channelName, callerId: currentOwner.userId, callSign: currentOwner.callSign, socketId: socket.id };
+            io.to(roomKey).emit('ptt-idle', payload);
+            io.to(`admin-${activeOpId}`).emit('ptt-idle', { ...payload, opId: activeOpId });
+            socket.emit('ptt-idle', payload);
+            logEvent(activeOpId, 'ptt-stop', payload);
+        }
+    });
+
     socket.on('disconnect', async () => {
         try {
+            releaseSocketFloor(socket);
             const opId = socket.OpId;
             socketOpId.delete(socket.id);
             if (opId) {
