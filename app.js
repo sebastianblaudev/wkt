@@ -839,10 +839,14 @@ async function powerOn() {
             Object.keys(peers).forEach(targetId => {
                 const pc = peers[targetId];
                 if (pc && pc.signalingState !== 'closed') {
-                    localStream.getTracks().forEach(track => {
+                    localStream.getAudioTracks().forEach(track => {
                         const senders = pc.getSenders();
-                        const exists = senders.some(s => s.track && s.track.kind === track.kind);
-                        if (!exists) pc.addTrack(track, localStream);
+                        const audioSender = senders.find(s => s.track === null || (s.track && s.track.kind === 'audio'));
+                        if (audioSender) {
+                            audioSender.replaceTrack(track).catch(e => console.warn("replaceTrack error:", e));
+                        } else {
+                            pc.addTrack(track, localStream);
+                        }
                     });
                     createOffer(targetId);
                 }
@@ -1190,23 +1194,21 @@ function createPeerConnection(targetId) {
     peers[targetId] = pc;
     peerStates[targetId] = { makingOffer: false, ignoreOffer: false };
 
-    // Ensure audio transceiver is configured for bidirectional audio
-    try {
-        pc.addTransceiver('audio', { direction: 'sendrecv' });
-    } catch (e) {
-        console.warn("addTransceiver error:", e);
-    }
-
-    if (localStream) {
-        localStream.getTracks().forEach(track => {
-            const senders = pc.getSenders();
-            const exists = senders.some(s => s.track && s.track.kind === track.kind);
-            if (!exists) pc.addTrack(track, localStream);
+    // Attach local audio track if available, otherwise register a single audio transceiver
+    if (localStream && localStream.getAudioTracks().length > 0) {
+        localStream.getAudioTracks().forEach(track => {
+            pc.addTrack(track, localStream);
         });
+    } else {
+        try {
+            pc.addTransceiver('audio', { direction: 'sendrecv' });
+        } catch (e) {
+            console.warn("addTransceiver error:", e);
+        }
     }
 
     pc.ontrack = (event) => {
-        const stream = event.streams[0] || new MediaStream([event.track]);
+        const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
         updateDebug(`Track Received from ${targetId}`);
         console.log(`[WebRTC] Track matched: ${stream.id}, kind: ${event.track.kind}`);
 
@@ -1225,6 +1227,7 @@ function createPeerConnection(targetId) {
 
         remoteAudio.srcObject = stream;
         remoteAudio.volume = 1.0;
+        remoteAudio.muted = false;
 
         const playRemote = () => {
             remoteAudio.play().catch(e => {
