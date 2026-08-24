@@ -807,6 +807,57 @@ function forcePowerOff() {
 
 
 // --- Power On (shared by button click and deep-link auto-join) ---
+async function ensureLocalAudioStream() {
+    if (localStream && localStream.getAudioTracks().length > 0 && localStream.getAudioTracks()[0].readyState === 'live') {
+        return localStream;
+    }
+    try {
+        const rawStream = await navigator.mediaDevices.getUserMedia({
+            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
+            video: false
+        });
+        localStream = rawStream;
+        localStream.getAudioTracks().forEach(t => t.enabled = false);
+        window.localStream = localStream;
+
+        const AudioCtx = window.AudioContext || window.webkitAudioContext;
+        if (AudioCtx) {
+            if (!audioContext) {
+                audioContext = new AudioCtx();
+            } else if (audioContext.state === 'suspended') {
+                audioContext.resume().catch(() => {});
+            }
+            try {
+                if (micSource) try { micSource.disconnect(); } catch (_) {}
+                micSource = audioContext.createMediaStreamSource(rawStream);
+                analyser = audioContext.createAnalyser();
+                micSource.connect(analyser);
+                analyser.fftSize = 64;
+                dataArray = new Uint8Array(analyser.frequencyBinCount);
+            } catch (_) {}
+        }
+
+        // Attach or replace live mic track in all existing peer connections
+        Object.values(peers).forEach(pc => {
+            if (pc && pc.signalingState !== 'closed') {
+                localStream.getAudioTracks().forEach(track => {
+                    const senders = pc.getSenders();
+                    const audioSender = senders.find(s => s.track === null || (s.track && s.track.kind === 'audio'));
+                    if (audioSender) {
+                        audioSender.replaceTrack(track).catch(e => console.warn("replaceTrack error:", e));
+                    } else {
+                        pc.addTrack(track, localStream);
+                    }
+                });
+            }
+        });
+        return localStream;
+    } catch (err) {
+        console.warn("[Audio] Could not acquire microphone:", err.message);
+        return null;
+    }
+}
+
 async function powerOn() {
     if (isPoweredOn) return;
     isPoweredOn = true;
@@ -816,53 +867,8 @@ async function powerOn() {
     startGpsTracking();
     try { await requestWakeLock(); } catch (_) {}
 
-    // Try to init audio, but DON'T block or crash if it fails
-    try {
-        const rawStream = await navigator.mediaDevices.getUserMedia({
-            audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
-            video: false
-        });
-
-        const AudioCtx = window.AudioContext || window.webkitAudioContext;
-        if (AudioCtx) {
-            if (!audioContext) {
-                audioContext = new AudioCtx();
-            } else if (audioContext.state === 'suspended') {
-                audioContext.resume();
-            }
-            micSource = audioContext.createMediaStreamSource(rawStream);
-            analyser = audioContext.createAnalyser();
-            micSource.connect(analyser);
-
-            localStream = rawStream;
-            localStream.getAudioTracks().forEach(t => t.enabled = false);
-            window.localStream = localStream;
-            window.audioContext = audioContext;
-            window.peers = peers;
-
-            Object.keys(peers).forEach(targetId => {
-                const pc = peers[targetId];
-                if (pc && pc.signalingState !== 'closed') {
-                    localStream.getAudioTracks().forEach(track => {
-                        const senders = pc.getSenders();
-                        const audioSender = senders.find(s => s.track === null || (s.track && s.track.kind === 'audio'));
-                        if (audioSender) {
-                            audioSender.replaceTrack(track).catch(e => console.warn("replaceTrack error:", e));
-                        } else {
-                            pc.addTrack(track, localStream);
-                        }
-                    });
-                }
-            });
-
-            analyser.fftSize = 64;
-            const bufferLength = analyser.frequencyBinCount;
-            dataArray = new Uint8Array(bufferLength);
-            drawVisualizer();
-        }
-    } catch (micErr) {
-        console.warn("Mic not available, continuing without audio:", micErr.message);
-    }
+    await ensureLocalAudioStream();
+    drawVisualizer();
 
     statusText.innerText = "STANDBY";
     talkBtn.disabled = false;
@@ -960,8 +966,8 @@ socket.on('ptt-idle', (data) => {
     }
 });
 
-const startTx = () => {
-    if (!isPoweredOn) return;
+const startTx = async () => {
+    if (!isPoweredOn) await powerOn();
     if (!roomId) {
         const defaultCh = document.querySelector('.channel-item')?.getAttribute('data-channel') || 'CHANNEL 1';
         joinRoom(defaultCh);
@@ -969,6 +975,11 @@ const startTx = () => {
     if (isTransmitting) return;
     
     ensureAudioContext();
+
+    // Ensure mic is active on this user gesture
+    if (!localStream || localStream.getAudioTracks().length === 0 || localStream.getAudioTracks()[0].readyState !== 'live') {
+        await ensureLocalAudioStream();
+    }
 
     isTransmitting = true;
     statusText.innerText = "SOLICITANDO CANAL...";
@@ -981,7 +992,19 @@ const startTx = () => {
         const bars = signalStrength.querySelectorAll('.bar');
         bars.forEach(bar => bar.style.backgroundColor = 'var(--primary-color)');
     }
-    if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = true);
+
+    if (localStream) {
+        localStream.getAudioTracks().forEach(t => t.enabled = true);
+    }
+    Object.values(peers).forEach(pc => {
+        if (pc && pc.signalingState !== 'closed') {
+            pc.getSenders().forEach(s => {
+                if (s.track && s.track.kind === 'audio') {
+                    s.track.enabled = true;
+                }
+            });
+        }
+    });
 
     socket.emit('ptt-start', {
         opId: currentOpId,
@@ -1005,7 +1028,18 @@ const stopTx = () => {
     statusText.classList.remove('error-blink');
     talkBtn.classList.remove('talking', 'receiving');
     pttContainer.classList.remove('transmitting', 'receiving');
-    if (localStream) localStream.getAudioTracks().forEach(t => t.enabled = false);
+    if (localStream) {
+        localStream.getAudioTracks().forEach(t => t.enabled = false);
+    }
+    Object.values(peers).forEach(pc => {
+        if (pc && pc.signalingState !== 'closed') {
+            pc.getSenders().forEach(s => {
+                if (s.track && s.track.kind === 'audio') {
+                    s.track.enabled = false;
+                }
+            });
+        }
+    });
     updateDebug("TX Stopped");
 };
 
