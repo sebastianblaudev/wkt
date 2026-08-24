@@ -921,6 +921,16 @@ socket.on('ptt-active', (data) => {
         pttContainer.classList.add('receiving');
         talkBtn.classList.add('receiving');
         if (statusBar) statusBar.classList.add('receiving');
+
+        // Ensure receiver's audio context and elements are actively running
+        const ctx = ensureAudioContext();
+        if (ctx && ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        document.querySelectorAll('audio').forEach(a => {
+            if (a.srcObject && a.paused) a.play().catch(() => {});
+        });
+
         playPttStartBeep();
         updateDebug(`RX Active: ${data.callSign}`);
     } else {
@@ -1231,28 +1241,36 @@ function createPeerConnection(targetId) {
 
         const playRemote = () => {
             remoteAudio.play().catch(e => {
-                console.warn("[WebRTC] Autoplay blocked, waiting for interaction", e);
-                updateDebug("TAP SCREEN TO HEAR AUDIO");
+                console.warn("[WebRTC] HTMLAudioElement play error, will rely on WebAudio graph:", e);
             });
         };
         playRemote();
 
-        if (audioContext) {
-            audioContext.resume().catch(() => {});
+        // Web Audio routing directly to speakers + visualizer analyser
+        const ctx = ensureAudioContext();
+        if (ctx) {
+            ctx.resume().catch(() => {});
             try {
                 if (!remoteAudio.connectedToContext) {
-                    const source = audioContext.createMediaStreamSource(stream);
-                    remoteAnalyser = audioContext.createAnalyser();
+                    const source = ctx.createMediaStreamSource(stream);
+                    remoteAnalyser = ctx.createAnalyser();
                     remoteAnalyser.fftSize = 64;
                     remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
+                    
+                    const remoteGain = ctx.createGain();
+                    remoteGain.gain.setValueAtTime(1.0, ctx.currentTime);
+
                     source.connect(remoteAnalyser);
+                    source.connect(remoteGain);
+                    remoteGain.connect(ctx.destination);
+
                     remoteAudio.connectedToContext = true;
-                    updateDebug("Audio Graph: VISUALIZER OK");
-                    statusText.classList.remove('error-blink');
-                    if (statusText.innerText.startsWith("AUDIO BLOCKED")) statusText.innerText = "ONLINE";
+                    updateDebug("Audio Graph: ACTIVE & CONNECTED TO SPEAKERS");
+                    console.log(`[WebRTC] Stream from ${targetId} routed to AudioContext destination!`);
                 }
             } catch (e) {
-                updateDebug("Bridge Error: " + e.message);
+                console.error("[WebRTC] Audio graph routing error:", e);
+                updateDebug("Audio Bridge Error: " + e.message);
             }
         }
     };
