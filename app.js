@@ -292,10 +292,13 @@ let turnConfig = (window.TURN_CONFIG)
         : null);
 
 const baseIceServers = [
-    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:global.stun.twilio.com:3478' },
     {
         urls: [
             'turn:openrelay.metered.ca:80',
@@ -937,9 +940,32 @@ socket.on('ptt-active', (data) => {
         if (ctx && ctx.state === 'suspended') {
             ctx.resume().catch(() => {});
         }
+
+        // Try to play ALL audio elements — if native <audio> is blocked by autoplay,
+        // the Web Audio ctx.destination path (set up in pc.ontrack) handles playback.
+        let anyPlaying = false;
         document.querySelectorAll('audio').forEach(a => {
-            if (a.srcObject && a.paused) a.play().catch(() => {});
+            a.muted = false;
+            a.volume = 1.0;
+            if (a.srcObject) {
+                a.play().then(() => { anyPlaying = true; }).catch(() => {});
+            }
         });
+
+        // Fallback: if no <audio> element is playing, route all remote streams
+        // through Web Audio API to ctx.destination so audio is audible.
+        if (!anyPlaying && ctx) {
+            document.querySelectorAll('audio').forEach(a => {
+                if (a.srcObject && !a.connectedToDestination) {
+                    try {
+                        const src = ctx.createMediaStreamSource(a.srcObject);
+                        src.connect(ctx.destination);
+                        a.connectedToDestination = true;
+                        console.log("[Audio] Fallback: routed remote stream to ctx.destination");
+                    } catch (_) {}
+                }
+            });
+        }
 
         playPttStartBeep();
         updateDebug(`RX Active: ${data.callSign}`);
@@ -1115,9 +1141,19 @@ window.addEventListener('touchcancel', () => { if (isTransmitting) stopTx(); });
 
 // Global Audio Autoplay Unlocking on user interaction
 const unlockAllAudio = () => {
-    ensureAudioContext();
-    if (audioContext && audioContext.state === 'suspended') {
-        audioContext.resume().catch(() => {});
+    const ctx = ensureAudioContext();
+    if (ctx) {
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch(() => {});
+        }
+        // Play an inaudible 1-sample buffer to permanently unlock Web Audio context on iOS/Android
+        try {
+            const buffer = ctx.createBuffer(1, 1, 22050);
+            const source = ctx.createBufferSource();
+            source.buffer = buffer;
+            source.connect(ctx.destination);
+            source.start(0);
+        } catch (_) {}
     }
     document.querySelectorAll('audio').forEach(a => {
         a.muted = false;
@@ -1129,7 +1165,9 @@ const unlockAllAudio = () => {
 };
 window.addEventListener('click', unlockAllAudio, { capture: true, passive: true });
 window.addEventListener('touchstart', unlockAllAudio, { capture: true, passive: true });
+window.addEventListener('touchend', unlockAllAudio, { capture: true, passive: true });
 window.addEventListener('pointerdown', unlockAllAudio, { capture: true, passive: true });
+
 
 
 
@@ -1276,9 +1314,9 @@ function createPeerConnection(targetId) {
             remoteAudio.id = `audio-${targetId}`;
             remoteAudio.autoplay = true;
             remoteAudio.playsInline = true;
-            remoteAudio.setAttribute('playsinline', '');
-            remoteAudio.setAttribute('webkit-playsinline', '');
-            remoteAudio.setAttribute('autoplay', '');
+            remoteAudio.setAttribute('playsinline', 'true');
+            remoteAudio.setAttribute('webkit-playsinline', 'true');
+            remoteAudio.setAttribute('autoplay', 'true');
             remoteAudio.volume = 1.0;
             remoteAudio.muted = false;
             remoteAudio.style.position = 'fixed';
@@ -1291,19 +1329,14 @@ function createPeerConnection(targetId) {
         remoteAudio.volume = 1.0;
         remoteAudio.muted = false;
 
-        const playRemote = () => {
-            if (remoteAudio.paused) {
-                remoteAudio.play().catch(e => {
-                    console.warn("[WebRTC] HTMLAudioElement play error, resuming context:", e);
-                    const ctx = ensureAudioContext();
-                    if (ctx) remoteAudio.play().catch(() => {});
-                });
-            }
-        };
-        playRemote();
+        // Visualizer hook: connect stream to AnalyserNode for visual feedback.
+        // If the <audio> element playback is blocked by autoplay policy, the stream
+        // is ALSO connected to ctx.destination so audio plays through Web Audio API.
+        // This bypasses the browser autoplay block since the AudioContext is unlocked
+        // by user gesture (PTT press / touch).
+        let ctxDestinationConnected = false;
 
-        // Visualizer only analyser (do not route to ctx.destination so native audio element output is not muted)
-        const bindWebAudioSource = () => {
+        const attachVisualizer = () => {
             const ctx = ensureAudioContext();
             if (!ctx) return;
             try {
@@ -1312,6 +1345,7 @@ function createPeerConnection(targetId) {
                 }
                 const source = ctx.createMediaStreamSource(trackStream);
                 remoteAudio.audioSourceNode = source;
+
                 remoteAnalyser = ctx.createAnalyser();
                 remoteAnalyser.fftSize = 64;
                 remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
@@ -1320,19 +1354,44 @@ function createPeerConnection(targetId) {
 
                 source.connect(remoteAnalyser);
 
+                // If native <audio> element is not playing, route through Web Audio
+                // so the user actually hears the audio (bypasses autoplay policy).
+                if (!ctxDestinationConnected && (remoteAudio.paused || remoteAudio.ended)) {
+                    source.connect(ctx.destination);
+                    ctxDestinationConnected = true;
+                    updateDebug("Audio: WEB AUDIO SPEAKER (autoplay blocked)");
+                } else {
+                    updateDebug("Audio: NATIVE SPEAKER + VISUALIZER OK");
+                }
                 remoteAudio.connectedToContext = true;
-                updateDebug("Audio: NATIVE SPEAKER + VISUALIZER OK");
-                console.log(`[WebRTC] Stream from ${targetId} active on native audio element!`);
+                console.log(`[WebRTC] Stream from ${targetId} attached, native=${!remoteAudio.paused}`);
             } catch (e) {
-                console.warn("[WebRTC] Analyser attach warning (audio plays natively):", e);
+                console.warn("[WebRTC] Visualizer analyser warning:", e.message);
             }
         };
 
-        bindWebAudioSource();
+const playNative = () => {
+            // Always attach visualizer first — it also routes to ctx.destination
+            // as fallback if native <audio> element is blocked by autoplay policy.
+            attachVisualizer();
+
+            if (remoteAudio.paused) {
+                remoteAudio.play()
+                    .catch(e => {
+                        console.warn("[WebRTC] Autoplay blocked, resuming context:", e);
+                        ensureAudioContext();
+                        remoteAudio.play().catch(() => {});
+                    });
+            }
+        };
+        playNative();
+
         liveTrack.onunmute = () => {
             console.log(`[WebRTC] Live track unmuted from ${targetId}`);
-            bindWebAudioSource();
-            if (remoteAudio.paused) remoteAudio.play().catch(() => {});
+            remoteAudio.srcObject = trackStream;
+            remoteAudio.muted = false;
+            remoteAudio.volume = 1.0;
+            playNative();
         };
     };
 
