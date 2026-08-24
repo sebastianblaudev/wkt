@@ -348,13 +348,8 @@ socket.on('channel-users-count', (count) => {
 socket.on('room-users', (users) => {
     console.log("Existing users in room:", users);
     users.forEach(targetId => {
-        // Only initiate if my ID is "smaller" to avoid Glare
-        if (socket.id < targetId) {
-            console.log(`[SIGNALLING] Initiating offer to existing user: ${targetId}`);
-            createOffer(targetId);
-        } else {
-            console.log(`[SIGNALLING] Waiting for offer from: ${targetId}`);
-        }
+        console.log(`[SIGNALLING] Initiating offer to existing user: ${targetId}`);
+        createOffer(targetId);
     });
 });
 
@@ -835,6 +830,9 @@ async function powerOn() {
 
             localStream = rawStream;
             localStream.getAudioTracks().forEach(t => t.enabled = false);
+            window.localStream = localStream;
+            window.audioContext = audioContext;
+            window.peers = peers;
 
             Object.keys(peers).forEach(targetId => {
                 const pc = peers[targetId];
@@ -848,7 +846,6 @@ async function powerOn() {
                             pc.addTrack(track, localStream);
                         }
                     });
-                    createOffer(targetId);
                 }
             });
 
@@ -1218,9 +1215,10 @@ function createPeerConnection(targetId) {
     }
 
     pc.ontrack = (event) => {
-        const stream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([event.track]);
+        const liveTrack = event.track;
+        const trackStream = new MediaStream([liveTrack]);
         updateDebug(`Track Received from ${targetId}`);
-        console.log(`[WebRTC] Track matched: ${stream.id}, kind: ${event.track.kind}`);
+        console.log(`[WebRTC] Track matched: ${trackStream.id}, kind: ${liveTrack.kind}, state: ${liveTrack.readyState}`);
 
         let remoteAudio = document.getElementById(`audio-${targetId}`);
         if (!remoteAudio) {
@@ -1229,50 +1227,63 @@ function createPeerConnection(targetId) {
             remoteAudio.autoplay = true;
             remoteAudio.playsInline = true;
             remoteAudio.volume = 1.0;
+            remoteAudio.muted = false;
             remoteAudio.style.position = 'fixed';
             remoteAudio.style.left = '-9999px';
             remoteAudio.style.top = '-9999px';
             document.body.appendChild(remoteAudio);
         }
 
-        remoteAudio.srcObject = stream;
+        remoteAudio.srcObject = trackStream;
         remoteAudio.volume = 1.0;
         remoteAudio.muted = false;
 
         const playRemote = () => {
             remoteAudio.play().catch(e => {
-                console.warn("[WebRTC] HTMLAudioElement play error, will rely on WebAudio graph:", e);
+                console.warn("[WebRTC] HTMLAudioElement play error:", e);
             });
         };
         playRemote();
 
         // Web Audio routing directly to speakers + visualizer analyser
-        const ctx = ensureAudioContext();
-        if (ctx) {
+        const bindWebAudioSource = () => {
+            const ctx = ensureAudioContext();
+            if (!ctx) return;
             ctx.resume().catch(() => {});
             try {
-                if (!remoteAudio.connectedToContext) {
-                    const source = ctx.createMediaStreamSource(stream);
-                    remoteAnalyser = ctx.createAnalyser();
-                    remoteAnalyser.fftSize = 64;
-                    remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
-                    
-                    const remoteGain = ctx.createGain();
-                    remoteGain.gain.setValueAtTime(1.0, ctx.currentTime);
-
-                    source.connect(remoteAnalyser);
-                    source.connect(remoteGain);
-                    remoteGain.connect(ctx.destination);
-
-                    remoteAudio.connectedToContext = true;
-                    updateDebug("Audio Graph: ACTIVE & CONNECTED TO SPEAKERS");
-                    console.log(`[WebRTC] Stream from ${targetId} routed to AudioContext destination!`);
+                if (remoteAudio.audioSourceNode) {
+                    try { remoteAudio.audioSourceNode.disconnect(); } catch (_) {}
                 }
+                const source = ctx.createMediaStreamSource(trackStream);
+                remoteAudio.audioSourceNode = source;
+                remoteAnalyser = ctx.createAnalyser();
+                remoteAnalyser.fftSize = 64;
+                remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
+                window.remoteAnalyser = remoteAnalyser;
+                window.remoteDataArray = remoteDataArray;
+                
+                const remoteGain = ctx.createGain();
+                remoteGain.gain.setValueAtTime(1.0, ctx.currentTime);
+
+                source.connect(remoteAnalyser);
+                source.connect(remoteGain);
+                remoteGain.connect(ctx.destination);
+
+                remoteAudio.connectedToContext = true;
+                updateDebug("Audio Graph: ACTIVE & CONNECTED TO SPEAKERS");
+                console.log(`[WebRTC] Stream from ${targetId} routed to AudioContext destination!`);
             } catch (e) {
                 console.error("[WebRTC] Audio graph routing error:", e);
                 updateDebug("Audio Bridge Error: " + e.message);
             }
-        }
+        };
+
+        bindWebAudioSource();
+        liveTrack.onunmute = () => {
+            console.log(`[WebRTC] Live track unmuted from ${targetId}`);
+            bindWebAudioSource();
+            if (remoteAudio.paused) remoteAudio.play().catch(() => {});
+        };
     };
 
     pc.oniceconnectionstatechange = () => {
