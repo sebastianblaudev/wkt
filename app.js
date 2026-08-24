@@ -278,6 +278,7 @@ function updateMediaSession(type = 'COMMUNICATIONS') {
 
 // WebRTC
 const peers = {};
+window.peers = peers;
 const peerStates = {}; // Tracks { makingOffer: bool } per targetId
 
 // TURN servers help establish P2P audio behind restrictive NAT/cellular networks.
@@ -1362,8 +1363,24 @@ function createOffer(targetId) {
     updateDebug(`Offer -> ${targetId}`);
     const pc = createPeerConnection(targetId);
     
+    if (localStream) {
+        localStream.getAudioTracks().forEach(track => {
+            const senders = pc.getSenders();
+            const audioSender = senders.find(s => s.track === null || (s.track && s.track.kind === 'audio'));
+            if (audioSender) {
+                audioSender.replaceTrack(track).catch(() => {});
+            } else {
+                pc.addTrack(track, localStream);
+            }
+        });
+    }
+
+    pc.getTransceivers().forEach(t => {
+        t.direction = 'sendrecv';
+    });
+
     peerStates[targetId].makingOffer = true;
-    pc.createOffer()
+    pc.createOffer({ offerToReceiveAudio: true })
         .then(offer => pc.setLocalDescription(offer))
         .then(() => {
             signSignal({ target: targetId, offer: pc.localDescription, channel: roomId })
@@ -1424,6 +1441,21 @@ socket.on('offer', async (data) => {
         await pc.setRemoteDescription(new RTCSessionDescription(data.offer));
         
         if (data.offer.type === "offer") {
+            if (localStream) {
+                localStream.getAudioTracks().forEach(track => {
+                    const senders = pc.getSenders();
+                    const audioSender = senders.find(s => s.track === null || (s.track && s.track.kind === 'audio'));
+                    if (audioSender) {
+                        audioSender.replaceTrack(track).catch(() => {});
+                    } else {
+                        pc.addTrack(track, localStream);
+                    }
+                });
+            }
+            pc.getTransceivers().forEach(t => {
+                t.direction = 'sendrecv';
+            });
+
             const answer = await pc.createAnswer();
             await pc.setLocalDescription(answer);
             signSignal({ target: targetId, answer: pc.localDescription, channel: data.channel || roomId })
