@@ -1061,6 +1061,19 @@ window.addEventListener('blur', () => { if (isTransmitting) stopTx(); });
 document.addEventListener('visibilitychange', () => { if (document.hidden && isTransmitting) stopTx(); });
 window.addEventListener('touchcancel', () => { if (isTransmitting) stopTx(); });
 
+// Global Audio Autoplay Unlocking on user interaction
+const unlockAllAudio = () => {
+    ensureAudioContext();
+    document.querySelectorAll('audio').forEach(a => {
+        if (a.srcObject && a.paused) {
+            a.play().catch(() => {});
+        }
+    });
+};
+window.addEventListener('click', unlockAllAudio, { passive: true });
+window.addEventListener('touchstart', unlockAllAudio, { passive: true });
+window.addEventListener('pointerdown', unlockAllAudio, { passive: true });
+
 
 
 // --- Visualizer Logic ---
@@ -1167,11 +1180,7 @@ function roundRect(ctx, x, y, width, height, radius) {
 
 socket.on('user-connected', (userId) => {
     console.log('User connected:', userId);
-    // Standard initiation: Only initiate if I'm the designated "caller" (ID comparison)
-    if (socket.id < userId) {
-        console.log(`[SIGNALLING] I am polite caller for ${userId}, initiating offer...`);
-        createOffer(userId);
-    }
+    createPeerConnection(userId);
 });
 
 function createPeerConnection(targetId) {
@@ -1181,50 +1190,50 @@ function createPeerConnection(targetId) {
     peers[targetId] = pc;
     peerStates[targetId] = { makingOffer: false, ignoreOffer: false };
 
+    // Ensure audio transceiver is configured for bidirectional audio
+    try {
+        pc.addTransceiver('audio', { direction: 'sendrecv' });
+    } catch (e) {
+        console.warn("addTransceiver error:", e);
+    }
+
     if (localStream) {
-        localStream.getTracks().forEach(track => pc.addTrack(track, localStream));
+        localStream.getTracks().forEach(track => {
+            const senders = pc.getSenders();
+            const exists = senders.some(s => s.track && s.track.kind === track.kind);
+            if (!exists) pc.addTrack(track, localStream);
+        });
     }
 
     pc.ontrack = (event) => {
-        const stream = event.streams[0];
+        const stream = event.streams[0] || new MediaStream([event.track]);
         updateDebug(`Track Received from ${targetId}`);
-        console.log(`[WebRTC] Track matched: ${stream.id}`);
+        console.log(`[WebRTC] Track matched: ${stream.id}, kind: ${event.track.kind}`);
 
         let remoteAudio = document.getElementById(`audio-${targetId}`);
         if (!remoteAudio) {
-            remoteAudio = new Audio();
+            remoteAudio = document.createElement('audio');
             remoteAudio.id = `audio-${targetId}`;
             remoteAudio.autoplay = true;
             remoteAudio.playsInline = true;
-            // NOTE: display:none can prevent playback on some mobile browsers.
-            // Keep it in the layout but invisible/silent instead.
-            remoteAudio.style.position = 'absolute';
-            remoteAudio.style.width = '1px';
-            remoteAudio.style.height = '1px';
-            remoteAudio.style.opacity = '0';
-            remoteAudio.style.pointerEvents = 'none';
-            remoteAudio.style.left = '-10px';
-            remoteAudio.style.top = '-10px';
+            remoteAudio.volume = 1.0;
+            remoteAudio.style.position = 'fixed';
+            remoteAudio.style.left = '-9999px';
+            remoteAudio.style.top = '-9999px';
             document.body.appendChild(remoteAudio);
         }
 
-        // Play directly through the <audio> element (most reliable on mobile).
         remoteAudio.srcObject = stream;
         remoteAudio.volume = 1.0;
 
         const playRemote = () => {
             remoteAudio.play().catch(e => {
-                console.warn("Playback blocked, waiting for interaction", e);
+                console.warn("[WebRTC] Autoplay blocked, waiting for interaction", e);
                 updateDebug("TAP SCREEN TO HEAR AUDIO");
-                statusText.innerText = "AUDIO BLOCKED - TAP";
-                statusText.classList.add('error-blink');
             });
         };
         playRemote();
 
-        // Visualizer only: feed the stream into an analyser. Do NOT connect to
-        // audioContext.destination — that double-routes and can mute output on
-        // mobile when the AudioContext is suspended by autoplay policy.
         if (audioContext) {
             audioContext.resume().catch(() => {});
             try {
