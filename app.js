@@ -1079,26 +1079,6 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && isT
 window.addEventListener('touchcancel', () => { if (isTransmitting) stopTx(); });
 
 // Global Audio Autoplay Unlocking on user interaction
-const audioUnlockOverlay = document.getElementById('audio-unlock-overlay');
-const audioUnlockBtn = document.getElementById('audio-unlock-btn');
-
-function dismissAudioUnlock() {
-    if (audioUnlockOverlay) {
-        audioUnlockOverlay.style.opacity = '0';
-        audioUnlockOverlay.style.pointerEvents = 'none';
-        setTimeout(() => { audioUnlockOverlay.style.display = 'none'; }, 300);
-    }
-    unlockAllAudio();
-}
-
-if (audioUnlockBtn) {
-    audioUnlockBtn.addEventListener('click', dismissAudioUnlock);
-    audioUnlockBtn.addEventListener('touchend', dismissAudioUnlock);
-}
-if (audioUnlockOverlay) {
-    audioUnlockOverlay.addEventListener('click', dismissAudioUnlock);
-}
-
 const unlockAllAudio = () => {
     ensureAudioContext();
     if (audioContext && audioContext.state === 'suspended') {
@@ -1112,9 +1092,9 @@ const unlockAllAudio = () => {
         }
     });
 };
-window.addEventListener('click', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
-window.addEventListener('touchstart', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
-window.addEventListener('pointerdown', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
+window.addEventListener('click', unlockAllAudio, { capture: true, passive: true });
+window.addEventListener('touchstart', unlockAllAudio, { capture: true, passive: true });
+window.addEventListener('pointerdown', unlockAllAudio, { capture: true, passive: true });
 
 
 
@@ -1277,9 +1257,13 @@ function createPeerConnection(targetId) {
         remoteAudio.muted = false;
 
         const playRemote = () => {
-            remoteAudio.play().catch(e => {
-                console.warn("[WebRTC] HTMLAudioElement play error:", e);
-            });
+            if (remoteAudio.paused) {
+                remoteAudio.play().catch(e => {
+                    console.warn("[WebRTC] HTMLAudioElement play error, resuming context:", e);
+                    const ctx = ensureAudioContext();
+                    if (ctx) remoteAudio.play().catch(() => {});
+                });
+            }
         };
         playRemote();
 

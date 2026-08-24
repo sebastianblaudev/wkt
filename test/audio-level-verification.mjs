@@ -68,8 +68,8 @@ async function main() {
         await page2.goto(`${SERVER_URL}/?op=${OP_ID}&token=${token2}`, { waitUntil: 'networkidle0' });
 
         await new Promise(r => setTimeout(r, 1000));
-        await page1.click('#audio-unlock-btn').catch(() => {});
-        await page2.click('#audio-unlock-btn').catch(() => {});
+        await page1.click('body').catch(() => {});
+        await page2.click('body').catch(() => {});
         await new Promise(r => setTimeout(r, 2000));
 
         // Inject active 440Hz test audio tone into Op 1's local stream to simulate speaking into the mic
