@@ -291,13 +291,19 @@ let turnConfig = (window.TURN_CONFIG)
         : null);
 
 const baseIceServers = [
+    { urls: 'stun:stun.cloudflare.com:3478' },
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' },
     { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
-    { urls: 'stun:stun.ekiga.net' },
-    { urls: 'stun:stun.ideasip.com' }
+    {
+        urls: [
+            'turn:openrelay.metered.ca:80',
+            'turn:openrelay.metered.ca:443',
+            'turn:openrelay.metered.ca:443?transport=tcp'
+        ],
+        username: 'openrelayproject',
+        credential: 'openrelayproject'
+    }
 ];
 
 // Builds the current ICE server list (STUN + any TURN credentials we have).
@@ -1204,7 +1210,11 @@ function createPeerConnection(targetId) {
     // Attach local audio track if available, otherwise register a single audio transceiver
     if (localStream && localStream.getAudioTracks().length > 0) {
         localStream.getAudioTracks().forEach(track => {
-            pc.addTrack(track, localStream);
+            const sender = pc.addTrack(track, localStream);
+            const transceiver = pc.getTransceivers().find(t => t.sender === sender);
+            if (transceiver) {
+                transceiver.direction = 'sendrecv';
+            }
         });
     } else {
         try {
@@ -1216,7 +1226,7 @@ function createPeerConnection(targetId) {
 
     pc.ontrack = (event) => {
         const liveTrack = event.track;
-        const trackStream = new MediaStream([liveTrack]);
+        const trackStream = (event.streams && event.streams[0]) ? event.streams[0] : new MediaStream([liveTrack]);
         updateDebug(`Track Received from ${targetId}`);
         console.log(`[WebRTC] Track matched: ${trackStream.id}, kind: ${liveTrack.kind}, state: ${liveTrack.readyState}`);
 
@@ -1226,6 +1236,9 @@ function createPeerConnection(targetId) {
             remoteAudio.id = `audio-${targetId}`;
             remoteAudio.autoplay = true;
             remoteAudio.playsInline = true;
+            remoteAudio.setAttribute('playsinline', '');
+            remoteAudio.setAttribute('webkit-playsinline', '');
+            remoteAudio.setAttribute('autoplay', '');
             remoteAudio.volume = 1.0;
             remoteAudio.muted = false;
             remoteAudio.style.position = 'fixed';
