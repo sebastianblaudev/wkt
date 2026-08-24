@@ -1079,17 +1079,42 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && isT
 window.addEventListener('touchcancel', () => { if (isTransmitting) stopTx(); });
 
 // Global Audio Autoplay Unlocking on user interaction
+const audioUnlockOverlay = document.getElementById('audio-unlock-overlay');
+const audioUnlockBtn = document.getElementById('audio-unlock-btn');
+
+function dismissAudioUnlock() {
+    if (audioUnlockOverlay) {
+        audioUnlockOverlay.style.opacity = '0';
+        audioUnlockOverlay.style.pointerEvents = 'none';
+        setTimeout(() => { audioUnlockOverlay.style.display = 'none'; }, 300);
+    }
+    unlockAllAudio();
+}
+
+if (audioUnlockBtn) {
+    audioUnlockBtn.addEventListener('click', dismissAudioUnlock);
+    audioUnlockBtn.addEventListener('touchend', dismissAudioUnlock);
+}
+if (audioUnlockOverlay) {
+    audioUnlockOverlay.addEventListener('click', dismissAudioUnlock);
+}
+
 const unlockAllAudio = () => {
     ensureAudioContext();
+    if (audioContext && audioContext.state === 'suspended') {
+        audioContext.resume().catch(() => {});
+    }
     document.querySelectorAll('audio').forEach(a => {
-        if (a.srcObject && a.paused) {
+        a.muted = false;
+        a.volume = 1.0;
+        if (a.srcObject) {
             a.play().catch(() => {});
         }
     });
 };
-window.addEventListener('click', unlockAllAudio, { passive: true });
-window.addEventListener('touchstart', unlockAllAudio, { passive: true });
-window.addEventListener('pointerdown', unlockAllAudio, { passive: true });
+window.addEventListener('click', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
+window.addEventListener('touchstart', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
+window.addEventListener('pointerdown', () => { dismissAudioUnlock(); unlockAllAudio(); }, { passive: true });
 
 
 
@@ -1258,11 +1283,10 @@ function createPeerConnection(targetId) {
         };
         playRemote();
 
-        // Web Audio routing directly to speakers + visualizer analyser
+        // Visualizer only analyser (do not route to ctx.destination so native audio element output is not muted)
         const bindWebAudioSource = () => {
             const ctx = ensureAudioContext();
             if (!ctx) return;
-            ctx.resume().catch(() => {});
             try {
                 if (remoteAudio.audioSourceNode) {
                     try { remoteAudio.audioSourceNode.disconnect(); } catch (_) {}
@@ -1274,20 +1298,14 @@ function createPeerConnection(targetId) {
                 remoteDataArray = new Uint8Array(remoteAnalyser.frequencyBinCount);
                 window.remoteAnalyser = remoteAnalyser;
                 window.remoteDataArray = remoteDataArray;
-                
-                const remoteGain = ctx.createGain();
-                remoteGain.gain.setValueAtTime(1.0, ctx.currentTime);
 
                 source.connect(remoteAnalyser);
-                source.connect(remoteGain);
-                remoteGain.connect(ctx.destination);
 
                 remoteAudio.connectedToContext = true;
-                updateDebug("Audio Graph: ACTIVE & CONNECTED TO SPEAKERS");
-                console.log(`[WebRTC] Stream from ${targetId} routed to AudioContext destination!`);
+                updateDebug("Audio: NATIVE SPEAKER + VISUALIZER OK");
+                console.log(`[WebRTC] Stream from ${targetId} active on native audio element!`);
             } catch (e) {
-                console.error("[WebRTC] Audio graph routing error:", e);
-                updateDebug("Audio Bridge Error: " + e.message);
+                console.warn("[WebRTC] Analyser attach warning (audio plays natively):", e);
             }
         };
 

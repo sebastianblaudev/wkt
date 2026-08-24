@@ -20,7 +20,7 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="apple-mobile-web-app-title" content="WalkieTalkie">
     <link rel="apple-touch-icon" href="/logo.png">
-  <script type="module" crossorigin src="/assets/index-DBWGsoqY.js"></script>
+  <script type="module" crossorigin src="/assets/index-DygW_-ok.js"></script>
   <link rel="stylesheet" crossorigin href="/assets/index-DsUrQzsL.css">
 </head>
 
@@ -211,6 +211,18 @@
             <span class="material-icons-round override-icon">warning</span>
             <div class="override-title">TACTICAL OVERRIDE</div>
             <div class="override-message" id="override-message">REROUTING COMMS...</div>
+        </div>
+    </div>
+
+    <!-- Audio Autoplay Unlock Overlay -->
+    <div id="audio-unlock-overlay" class="audio-unlock-overlay" style="position: fixed; inset: 0; background: rgba(0,0,0,0.85); backdrop-filter: blur(8px); z-index: 99999; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 20px; transition: opacity 0.3s ease;">
+        <div style="background: #111a14; border: 2px solid #00ff66; box-shadow: 0 0 30px rgba(0,255,102,0.3); border-radius: 16px; padding: 28px 24px; max-width: 320px; width: 100%;">
+            <span class="material-icons-round" style="font-size: 56px; color: #00ff66; margin-bottom: 12px; display: block;">volume_up</span>
+            <h2 style="color: #fff; font-family: 'Share Tech Mono', monospace; font-size: 20px; margin: 0 0 8px 0; letter-spacing: 1px;">ACTIVAR AUDIO</h2>
+            <p style="color: #a0aec0; font-size: 13px; margin: 0 0 20px 0; line-height: 1.4;">Toca el botón para habilitar los altavoces y recibir transmisiones de voz en directo.</p>
+            <button id="audio-unlock-btn" style="width: 100%; padding: 14px; background: #00ff66; color: #000; border: none; border-radius: 8px; font-family: 'Share Tech Mono', monospace; font-size: 16px; font-weight: bold; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; box-shadow: 0 4px 15px rgba(0,255,102,0.4);">
+                <span class="material-icons-round">power_settings_new</span> ENTRAR A LA RADIO
+            </button>
         </div>
     </div>
 
